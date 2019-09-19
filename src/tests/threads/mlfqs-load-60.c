@@ -152,4 +152,4 @@ load_thread (void *aux UNUSED)
   while (timer_elapsed (start_time) < spin_time)
     continue;
   timer_sleep (exit_time - timer_elapsed (start_time));
-
+}
