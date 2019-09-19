@@ -5,7 +5,7 @@
 #### The loader (in loader.S) loads the kernel at physical address
 #### 0x20000 (128 kB) and jumps to "start", defined here.  This code
 #### switches from real mode to 32-bit protected mode and calls
-#### pintos_init().
+#### main().
 
 /* Flags in control register 0. */
 #define CR0_PE 0x00000001      /* Protection Enable. */
@@ -175,11 +175,11 @@ start:
 	addl $LOADER_PHYS_BASE, %esp
 	movl $0, %ebp			# Null-terminate main()'s backtrace
 
-#### Call pintos_init().
+#### Call main().
 
-	call pintos_init
+	call main
 
-# pintos_init() shouldn't ever return.  If it does, spin.
+# main() shouldn't ever return.  If it does, spin.
 
 1:	jmp 1b
 .endfunc
