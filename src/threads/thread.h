@@ -21,6 +21,7 @@ typedef int tid_t;
 /*add the state of thread SLEEP=BLOCK so no need to add sleep to thread status but refer to it*/
 #define THREAD_SLEEP THREAD_BLOCKED
 /* Thread priorities. */
+#define PRI_INVALID -1                  /* Invalid priority. */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
@@ -98,8 +99,10 @@ struct thread
     int64_t sleep_ticks;//the time to wait
     struct lock *lock_wait;//locks still waiting
     struct list locks;//locks owned by the thread
-    int locks_priority;//the top priority in the 
-    int base_priority;
+    int locks_priority;//the top priority in the thread
+    int base_priority;//the right now priority
+    int nice;
+    int recent_cpu;//用整数模拟的浮点数
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -149,4 +152,12 @@ void thread_sleep(int64_t ticks);//ticks is from lib/kernel/timer.c function tim
 void thread_foreach_sleep (void);//need to define a sleep version of foreach, different from the general one, because it's already slept, so dont need the action be passed in. 
 bool thread_less_priority(const struct list_elem *compare1,const struct list_elem *compare2,void *aux UNUSED);//only once is fine for !less is greater, UNUSED is a state to see whether is used
 //declaration of thread
+void thread_priority_transfer(struct thread *t);//get nest lock
+void thread_priority(struct thread *t);//thread update priority
+void lock_priority_update(struct lock *l);//lock update priority
+//declaration of priority lock realization
+void thread_increase_recent_cpu(void);
+void thread_recalculate_load_avg(void);
+void thread_recalculate_recent_cpu(struct thread *t,void *);
+void thread_recalculate_priority(struct thread *t,void *);
 #endif /* threads/thread.h */

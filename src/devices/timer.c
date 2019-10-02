@@ -172,8 +172,21 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  
+  if(thread_mlfqs)
+  {
+    thread_increase_recent_cpu();//每个ticks更新
+    if(ticks % TIMER_FREQ == 0)//每秒更新
+    {
+      thread_recalculate_load_avg();
+      thread_foreach(&thread_recalculate_recent_cpu,NULL);
+    }
+    if(ticks %4 == 0)//每4个ticks更新
+      thread_foreach(&thread_recalculate_priority,NULL);
+  }
+
+  thread_foreach_sleep();
   thread_tick ();
-  thread_foreach_sleep();//add the updates for sleep_list
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

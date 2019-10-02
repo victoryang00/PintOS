@@ -19,7 +19,8 @@
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
-
+#define fp_one (1<<14) //表示浮点数1.0
+static int load_avg;
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -95,7 +96,7 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
   list_init (&sleep_list);
-
+ load_avg = 0;//全局变量初始化为0
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -174,6 +175,7 @@ thread_create (const char *name, int priority,
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
   tid_t tid;
+ enum intr_level old_level;
 
   ASSERT (function != NULL);
 
@@ -184,6 +186,9 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
+  struct thread *cur_t = thread_current();
+  t->nice = cur_t->nice;//创建的新线程的nice应该等于父线程的nice
+  t->recent_cpu = cur_t->recent_cpu;//理由同上
   tid = t->tid = allocate_tid ();
 
   /* Stack frame for kernel_thread(). */
@@ -203,7 +208,8 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+  if(priority > thread_current()->priority)
+    thread_yield();
   return tid;
 }
 
@@ -338,7 +344,18 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  struct thread *t;
+  enum intr_level old_level;
+
+  old_level = intr_disable();
+  t = thread_current();
+  t->base_priority = new_priority;
+  if(t->base_priority > t->locks_priority)
+    t->priority = t->base_priority;
+  else
+    t->priority = t->locks_priority;
+  thread_yield();
+  intr_set_level(old_level);
 }
 
 /* Returns the current thread's priority. */
@@ -353,6 +370,11 @@ void
 thread_set_nice (int nice UNUSED) 
 {
   /* Not yet implemented. */
+  /* gotcha. */
+  struct thread *t = thread_current();
+  t->nice = nice;
+  thread_recalculate_priority(t,NULL);
+  thread_yield();
 }
 
 /* Returns the current thread's nice value. */
@@ -360,7 +382,8 @@ int
 thread_get_nice (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  /* gotcha. */
+  return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
@@ -368,7 +391,13 @@ int
 thread_get_load_avg (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  /* gotcha. */
+  int avg = load_avg;
+  if(avg>=0)
+    avg = (avg+fp_one/2)/fp_one;
+  else
+    avg = (avg-fp_one/2)/fp_one;
+  return avg*100;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -376,7 +405,12 @@ int
 thread_get_recent_cpu (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  int cpu = thread_current()->recent_cpu;
+  if(cpu>=0)
+    cpu = (cpu+fp_one/2)/fp_one;
+  else
+    cpu = (cpu-fp_one/2)/fp_one;
+  return cpu*100;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -454,8 +488,6 @@ is_thread (struct thread *t)
 static void
 init_thread (struct thread *t, const char *name, int priority)
 {
-  enum intr_level old_level;
-
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
@@ -465,11 +497,19 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  t->magic = THREAD_MAGIC;
 
-  old_level = intr_disable ();
+  t->lock_wait=NULL;
+  list_init(&t->locks);
+  t->locks_priority=PRI_INVALID;
+  t->base_priority=priority;
+
+  t->nice = 0;//设置nice初值为0
+  t->recent_cpu = 0;//设置recent_cpu初值为0
+
+  t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
-  intr_set_level (old_level);
+
+
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -632,6 +672,103 @@ thread_less_priority(const struct list_elem *compare1,const struct list_elem *co
   return whether_less;
 }
 
+void
+thread_priority_transfer(struct thread *t)
+{
+  struct lock *l = t->lock_wait;//get the lock that is currently waiting
+  while(l){
+    if(t->priority > l->priority)
+      l->priority = t->priority;
+    else
+      break;
+    t = l->holder;//get the holder lock
+    if(l->priority > t->locks_priority)
+      t->locks_priority = l->priority;
+    else
+      break;
+    //algorithm to make the current priority the top priority
+    if(l->priority > t->priority)
+      t->priority = l->priority;//for big base_priority case
+    else
+      break;
+    l = t->lock_wait;
+  }
+}
+//something wrong here
+void
+thread_priority(struct thread *t)
+{
+  t->locks_priority = PRI_INVALID;
+
+  struct lock* l;
+  struct list_elem *e;
+  for (e = list_begin (&t->locks); e != list_end (&t->locks);
+       e = list_next (e))
+    {
+      l = list_entry(e, struct lock, element);
+      if(l->priority > t->locks_priority)
+        t->locks_priority = l->priority;//找到其中最高的优先级作为锁优先级
+    }
+
+  if(t->base_priority > t->locks_priority)//更新优先级
+    t->priority = t->base_priority;
+  else
+    t->priority = t->locks_priority;
+}
+
+void
+lock_priority_update(struct lock *l)
+{
+  l->priority = PRI_INVALID;
+
+  struct thread *t;
+  struct list_elem *e;
+  for (e = list_begin (&l->waiters); e != list_end (&l->waiters);
+       e = list_next (e))//遍历等待该锁的线程
+    {
+      t = list_entry(e, struct thread, elem);
+      if(t->priority > l->priority)
+        l->priority = t->priority;//找到其中最高的优先级
+    }
+}
+void
+thread_increase_recent_cpu(void)//每一个tick都需要更新当前线程的recent_cpu
+{
+  struct thread *t = thread_current();
+  if(t!=idle_thread)
+    t->recent_cpu = t->recent_cpu + fp_one;//浮点加1
+}
+
+void
+thread_recalculate_load_avg(void)//每秒都需要更新全局变量load_avg
+{
+  int size=list_size(&ready_list);
+  if(thread_current()!=idle_thread)
+    size++;
+  load_avg = load_avg*59/60 + (size)*fp_one/60;
+}
+
+void
+thread_recalculate_recent_cpu(struct thread *t,void *aux UNUSED)//每秒都需要对所有线程重新计算recent_cpu
+{
+  if(t==idle_thread)
+    return;
+  t->recent_cpu = (((int64_t)(2*load_avg))*fp_one/(2*load_avg+fp_one))
+                   *t->recent_cpu/fp_one+t->nice*fp_one;
+}
+
+void
+thread_recalculate_priority(struct thread *t,void *aux UNUSED)//每4个ticks都需要对所有线程重新计算优先级
+{
+  if(t==idle_thread)
+    return;
+  t->priority = (PRI_MAX*fp_one - (t->recent_cpu / 4) 
+                 - t->nice*2*fp_one) / fp_one;
+  if(t->priority > PRI_MAX)
+    t->priority = PRI_MAX;
+  if(t->priority < PRI_MIN)
+    t->priority = PRI_MIN;
+}
 
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
