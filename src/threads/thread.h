@@ -96,6 +96,10 @@ struct thread
 
     struct list_elem slpelem;//the element in sleep_list
     int64_t sleep_ticks;//the time to wait
+    struct lock *lock_wait;//locks still waiting
+    struct list locks;//locks owned by the thread
+    int locks_priority;//the top priority in the 
+    int base_priority;
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */

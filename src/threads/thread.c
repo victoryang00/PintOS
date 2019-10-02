@@ -610,23 +610,26 @@ thread_foreach_sleep (void)
   element = list_begin (&sleep_list);
   while (element != list_end (&sleep_list))
     {
-      struct thread *t = list_entry (element, struct thread, slpelem);//得到线程结构体
-      t->sleep_ticks--;//更新sleep_ticks
-      if(t->sleep_ticks==0)//如果还需等待的ticks为0，即sleep时间到了
+      struct thread *t = list_entry (element, struct thread, slpelem);//get the function structure
+      if(t->sleep_ticks==0)//if the sleep_ticks is 0 then something should be done
       {
-        list_remove(element);//将该线程从sleep_list队列中删除
-        t->status = THREAD_READY;//将该线程的状态设置为THREAD_READY
-        list_push_back (&ready_list, &t->elem);//将该线程放入就绪队列中
+        list_remove(element);//remove the element from the list
+        t->status = THREAD_READY;//set the status to THREAD_READY
+        list_push_back (&ready_list, &t->elem);//put it to ready list
       }
+      t->sleep_ticks--;//update sleep_ticks
       element = list_next (element);
     }
 
   intr_set_level(old_level);
 }
 bool
-thread_less_priority(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED)
+thread_less_priority(const struct list_elem *compare1,const struct list_elem *compare2,void *aux UNUSED)
 {
-  return list_entry(a,struct thread,elem)->priority<list_entry(b,struct thread,elem)->priority;
+  int a=list_entry(compare1,struct thread,elem)->priority;
+  int b=list_entry(compare2,struct thread,elem)->priority;
+  bool whether_less=a<b;
+  return whether_less;
 }
 
 

@@ -91,7 +91,7 @@ timer_sleep (int64_t ticks)
 {
   // int64_t start = timer_ticks ();
   if(ticks<=0)return;//ticks should not <= 0. For robustness
-  ASSERT (intr_get_level () == INTR_ON);
+  // ASSERT (intr_get_level () == INTR_ON);
   thread_sleep(ticks);//realized in thread_sleep, so that thread can update its state and add schedule function.
   // while (timer_elapsed (start) < ticks) 
     // thread_yield ();
@@ -173,6 +173,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+  thread_foreach_sleep();//add the updates for sleep_list
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
