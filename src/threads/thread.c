@@ -614,7 +614,7 @@ thread_foreach_sleep (void)
       t->sleep_ticks--;//更新sleep_ticks
       if(t->sleep_ticks==0)//如果还需等待的ticks为0，即sleep时间到了
       {
-        list_remove(e);//将该线程从sleep_list队列中删除
+        list_remove(element);//将该线程从sleep_list队列中删除
         t->status = THREAD_READY;//将该线程的状态设置为THREAD_READY
         list_push_back (&ready_list, &t->elem);//将该线程放入就绪队列中
       }
