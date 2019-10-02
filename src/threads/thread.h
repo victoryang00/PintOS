@@ -99,6 +99,7 @@ struct thread
     int64_t sleep_ticks;//the time to wait
     struct lock *lock_wait;//locks still waiting
     struct list locks;//locks owned by the thread
+
     int locks_priority;//the top priority in the thread
     int base_priority;//the right now priority
     int nice;
