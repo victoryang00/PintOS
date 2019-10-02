@@ -18,7 +18,7 @@ enum thread_status
    You can redefine this to whatever type you like. */
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
-/*add the state of thread */
+/*add the state of thread SLEEP=BLOCK so no need to add sleep to thread status but refer to it*/
 #define THREAD_SLEEP THREAD_BLOCKED
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
@@ -143,6 +143,6 @@ int thread_get_load_avg (void);
 
 void thread_sleep(int64_t ticks);//ticks is from lib/kernel/timer.c function timer_sleep which requires the ticks(the edge between start and now)
 void thread_foreach_sleep (void);//need to define a sleep version of foreach, different from the general one, because it's already slept, so dont need the action be passed in. 
-bool thread_less_priority(const struct list_elem *compare1,const struct list_elem *compare2,void *aux UNUSED);//only once is fine for !less is greater, UNUSED is a state to
-
+bool thread_less_priority(const struct list_elem *compare1,const struct list_elem *compare2,void *aux UNUSED);//only once is fine for !less is greater, UNUSED is a state to see whether is used
+//declaration of thread
 #endif /* threads/thread.h */

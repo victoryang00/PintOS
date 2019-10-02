@@ -94,6 +94,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -492,10 +493,13 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
+  struct list_elem* element;
   if (list_empty (&ready_list))
     return idle_thread;
   else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+    element =list_max(&ready_list,&thread_less_priority,NULL);//find the top prioty
+    list_remove(element);//remove the thread from the ready list
+    return list_entry(element,struct thread,elem);
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -581,6 +585,51 @@ allocate_tid (void)
   return tid;
 }
 
+void
+thread_sleep(int64_t ticks)
+{
+  enum intr_level old_level=intr_disable();
+  //update the old level to the disable which the macro definition do the same thing
+  //intr_level is connected with IA 32 hardware mask
+  struct thread* t=thread_current();// get the current thread
+  t->sleep_ticks=ticks;//set the current thread to the tick time
+  list_push_back (&sleep_list, &t->slpelem);//put the current thread to the sleep_list list which is defined before.
+  //list_push_back is defined in the list.c to implement list push back
+  t->status = THREAD_SLEEP;//t has a member status which has to be updated to sleep(defined in the macro definition)
+  schedule ();//like other thread usage, we have to call schedule function to let schedule() implement the schedue.
+
+  intr_set_level(old_level);
+}
+
+void
+thread_foreach_sleep (void)
+{
+  enum intr_level old_level=intr_disable();
+//update the old level to the disable
+  struct list_elem* element;
+  element = list_begin (&sleep_list);
+  while (element != list_end (&sleep_list))
+    {
+      struct thread *t = list_entry (element, struct thread, slpelem);//得到线程结构体
+      t->sleep_ticks--;//更新sleep_ticks
+      if(t->sleep_ticks==0)//如果还需等待的ticks为0，即sleep时间到了
+      {
+        list_remove(e);//将该线程从sleep_list队列中删除
+        t->status = THREAD_READY;//将该线程的状态设置为THREAD_READY
+        list_push_back (&ready_list, &t->elem);//将该线程放入就绪队列中
+      }
+      element = list_next (element);
+    }
+
+  intr_set_level(old_level);
+}
+bool
+thread_less_priority(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED)
+{
+  return list_entry(a,struct thread,elem)->priority<list_entry(b,struct thread,elem)->priority;
+}
+
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
