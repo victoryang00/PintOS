@@ -18,9 +18,10 @@
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
-#define THREAD_MAGIC 0xcd6abf4b
-#define fp_one (1<<14) //表示浮点数1.0
+#define fp_one (1<<14) //表示浮點數1.0
 static int load_avg;
+#define THREAD_MAGIC 0xcd6abf4b
+static struct list sleep_list;
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -96,14 +97,15 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
   list_init (&sleep_list);
- load_avg = 0;//全局变量初始化为0
+
+  load_avg = 0;//全局變量初始化爲0
+
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 }
-
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
 void
@@ -175,7 +177,7 @@ thread_create (const char *name, int priority,
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
   tid_t tid;
- enum intr_level old_level;
+  enum intr_level old_level;
 
   ASSERT (function != NULL);
 
@@ -187,9 +189,13 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   struct thread *cur_t = thread_current();
-  t->nice = cur_t->nice;//创建的新线程的nice应该等于父线程的nice
+  t->nice = cur_t->nice;//創建的新線程的nice應該等於父線程的nice
   t->recent_cpu = cur_t->recent_cpu;//理由同上
   tid = t->tid = allocate_tid ();
+
+  /*
+  後面的代碼不用修改
+  */
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -208,8 +214,10 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+
   if(priority > thread_current()->priority)
     thread_yield();
+
   return tid;
 }
 
@@ -367,10 +375,8 @@ thread_get_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice) 
 {
-  /* Not yet implemented. */
-  /* gotcha. */
   struct thread *t = thread_current();
   t->nice = nice;
   thread_recalculate_priority(t,NULL);
@@ -381,8 +387,6 @@ thread_set_nice (int nice UNUSED)
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  /* gotcha. */
   return thread_current()->nice;
 }
 
@@ -390,8 +394,6 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  /* gotcha. */
   int avg = load_avg;
   if(avg>=0)
     avg = (avg+fp_one/2)/fp_one;
@@ -404,7 +406,6 @@ thread_get_load_avg (void)
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
   int cpu = thread_current()->recent_cpu;
   if(cpu>=0)
     cpu = (cpu+fp_one/2)/fp_one;
@@ -498,18 +499,16 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
 
-  t->lock_wait=NULL;
+  t->lock_waiting=NULL;
   list_init(&t->locks);
-  t->locks_priority=PRI_INVALID;
+  t->locks_priority=PRI_UNVALID;
   t->base_priority=priority;
 
-  t->nice = 0;//设置nice初值为0
-  t->recent_cpu = 0;//设置recent_cpu初值为0
+  t->nice = 0;//設置nice初值爲0
+  t->recent_cpu = 0;//設置recent_cpu初值爲0
 
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
-
-
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -533,13 +532,15 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  struct list_elem* element;
+  struct list_elem *e;
   if (list_empty (&ready_list))
     return idle_thread;
   else
-    element =list_max(&ready_list,&thread_less_priority,NULL);//find the top prioty
-    list_remove(element);//remove the thread from the ready list
-    return list_entry(element,struct thread,elem);
+  {
+    e=list_max (&ready_list,&thread_less_priority,NULL);//從前往後找到第一個優先級最高的線程
+    list_remove(e);//從就緒隊列中將選中的線程刪去
+    return list_entry (e, struct thread, elem);
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -624,123 +625,114 @@ allocate_tid (void)
 
   return tid;
 }
-
-void
+void
 thread_sleep(int64_t ticks)
 {
   enum intr_level old_level=intr_disable();
-  //update the old level to the disable which the macro definition do the same thing
-  //intr_level is connected with IA 32 hardware mask
-  struct thread* t=thread_current();// get the current thread
-  t->sleep_ticks=ticks;//set the current thread to the tick time
-  list_push_back (&sleep_list, &t->slpelem);//put the current thread to the sleep_list list which is defined before.
-  //list_push_back is defined in the list.c to implement list push back
-  t->status = THREAD_SLEEP;//t has a member status which has to be updated to sleep(defined in the macro definition)
-  schedule ();//like other thread usage, we have to call schedule function to let schedule() implement the schedue.
+
+  struct thread *t=thread_current();//獲取當前線程
+  t->sleep_ticks=ticks;//設置當前線程需要等待的ticks次數
+  list_push_back (&sleep_list, &t->slpelem);//將當前線程放入sleep_list隊列中
+  t->status = THREAD_SLEEP;//更新當前線程的狀態爲THREAD_SLEEP
+  schedule ();//進行線程調度，交出cpu，讓其他線程繼續執行
 
   intr_set_level(old_level);
 }
-
 void
 thread_foreach_sleep (void)
 {
   enum intr_level old_level=intr_disable();
-//update the old level to the disable
-  struct list_elem* element;
-  element = list_begin (&sleep_list);
-  while (element != list_end (&sleep_list))
+
+  struct list_elem *e;
+
+  for (e = list_begin (&sleep_list); e != list_end (&sleep_list);
+       e = list_next (e))//遍歷sleep_list中的每一個元素
     {
-      struct thread *t = list_entry (element, struct thread, slpelem);//get the function structure
-      if(t->sleep_ticks==0)//if the sleep_ticks is 0 then something should be done
+      struct thread *t = list_entry (e, struct thread, slpelem);//得到線程結構體
+      t->sleep_ticks--;//更新sleep_ticks
+      if(t->sleep_ticks==0)//如果還需等待的ticks爲0，即sleep時間到了
       {
-        list_remove(element);//remove the element from the list
-        t->status = THREAD_READY;//set the status to THREAD_READY
-        list_push_back (&ready_list, &t->elem);//put it to ready list
+        list_remove(e);//將該線程從sleep_list隊列中刪除
+        t->status = THREAD_READY;//將該線程的狀態設置爲THREAD_READY
+        list_push_back (&ready_list, &t->elem);//將該線程放入就緒隊列中
       }
-      t->sleep_ticks--;//update sleep_ticks
-      element = list_next (element);
     }
 
   intr_set_level(old_level);
 }
 bool
-thread_less_priority(const struct list_elem *compare1,const struct list_elem *compare2,void *aux UNUSED)
+thread_less_priority(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED)
 {
-  int a=list_entry(compare1,struct thread,elem)->priority;
-  int b=list_entry(compare2,struct thread,elem)->priority;
-  bool whether_less=a<b;
-  return whether_less;
+  return list_entry(a,struct thread,elem)->priority<list_entry(b,struct thread,elem)->priority;
 }
-
 void
-thread_priority_transfer(struct thread *t)
+thread_priority_donate_nest(struct thread *t)
 {
-  struct lock *l = t->lock_wait;//get the lock that is currently waiting
+  struct lock *l = t->lock_waiting;//獲取當前線程等待的鎖
   while(l){
-    if(t->priority > l->priority)
-      l->priority = t->priority;
+    if(t->priority > l->priority)//判斷當前線程是否能提高等待鎖的優先級
+      l->priority = t->priority;//若能，則進行優先級捐贈
+    else
+      break;//若不能，則結束優先級捐贈
+    t = l->holder;//獲得佔有鎖的線程
+    if(l->priority > t->locks_priority)//判斷當前鎖是否能提高佔有線程的鎖優先級
+      t->locks_priority = l->priority;//若能，則進行優先級捐贈
+    else
+      break;//若不能，則結束優先級捐贈
+    if(l->priority > t->priority)//因爲鎖優先級可能低於優先級（因爲基礎優先級很高），所以這裏需要再判斷一次
+      t->priority = l->priority;
     else
       break;
-    t = l->holder;//get the holder lock
-    if(l->priority > t->locks_priority)
-      t->locks_priority = l->priority;
-    else
-      break;
-    //algorithm to make the current priority the top priority
-    if(l->priority > t->priority)
-      t->priority = l->priority;//for big base_priority case
-    else
-      break;
-    l = t->lock_wait;
+    l = t->lock_waiting;
   }
 }
-//something wrong here
-void
-thread_priority(struct thread *t)
-{
-  t->locks_priority = PRI_INVALID;
 
-  struct lock* l;
+void
+thread_update_priority(struct thread *t)
+{
+  t->locks_priority = PRI_UNVALID;
+
+  struct lock *l;
   struct list_elem *e;
   for (e = list_begin (&t->locks); e != list_end (&t->locks);
-       e = list_next (e))
+       e = list_next (e))//遍歷線程持有的鎖
     {
-      l = list_entry(e, struct lock, element);
+      l = list_entry(e, struct lock, elem);
       if(l->priority > t->locks_priority)
-        t->locks_priority = l->priority;//找到其中最高的优先级作为锁优先级
+        t->locks_priority = l->priority;//找到其中最高的優先級作爲鎖優先級
     }
 
-  if(t->base_priority > t->locks_priority)//更新优先级
+  if(t->base_priority > t->locks_priority)//更新優先級
     t->priority = t->base_priority;
   else
     t->priority = t->locks_priority;
 }
 
 void
-lock_priority_update(struct lock *l)
+lock_update_priority(struct lock *l)
 {
-  l->priority = PRI_INVALID;
+  l->priority = PRI_UNVALID;
 
   struct thread *t;
   struct list_elem *e;
   for (e = list_begin (&l->waiters); e != list_end (&l->waiters);
-       e = list_next (e))//遍历等待该锁的线程
+       e = list_next (e))//遍歷等待該鎖的線程
     {
       t = list_entry(e, struct thread, elem);
       if(t->priority > l->priority)
-        l->priority = t->priority;//找到其中最高的优先级
+        l->priority = t->priority;//找到其中最高的優先級
     }
 }
 void
-thread_increase_recent_cpu(void)//每一个tick都需要更新当前线程的recent_cpu
+thread_increase_recent_cpu(void)//每一個tick都需要更新當前線程的recent_cpu
 {
   struct thread *t = thread_current();
   if(t!=idle_thread)
-    t->recent_cpu = t->recent_cpu + fp_one;//浮点加1
+    t->recent_cpu = t->recent_cpu + fp_one;//浮點加1
 }
 
 void
-thread_recalculate_load_avg(void)//每秒都需要更新全局变量load_avg
+thread_recalculate_load_avg(void)//每秒都需要更新全局變量load_avg
 {
   int size=list_size(&ready_list);
   if(thread_current()!=idle_thread)
@@ -749,7 +741,7 @@ thread_recalculate_load_avg(void)//每秒都需要更新全局变量load_avg
 }
 
 void
-thread_recalculate_recent_cpu(struct thread *t,void *aux UNUSED)//每秒都需要对所有线程重新计算recent_cpu
+thread_recalculate_recent_cpu(struct thread *t,void *aux UNUSED)//每秒都需要對所有線程重新計算recent_cpu
 {
   if(t==idle_thread)
     return;
@@ -758,7 +750,7 @@ thread_recalculate_recent_cpu(struct thread *t,void *aux UNUSED)//每秒都需�
 }
 
 void
-thread_recalculate_priority(struct thread *t,void *aux UNUSED)//每4个ticks都需要对所有线程重新计算优先级
+thread_recalculate_priority(struct thread *t,void *aux UNUSED)//每4個ticks都需要對所有線程重新計算優先級
 {
   if(t==idle_thread)
     return;

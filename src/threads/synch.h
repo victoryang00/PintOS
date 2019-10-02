@@ -20,11 +20,10 @@ void sema_self_test (void);
 /* Lock. */
 struct lock 
   {
-    struct thread *holder;      /* Thread holding lock (for debugging). */
-    struct list waiters;
-    int priority;
-    struct list_elem element;
-    struct semaphore semaphore; /* Binary semaphore controlling access. */
+    struct thread *holder;//持有當前鎖的線程
+    struct list waiters;//等待當前鎖的線程列表
+    int priority;//當前鎖的優先級，就是waiters中最高的優先級
+    struct list_elem elem;//struct thread中locks的鏈表元素
   };
 
 void lock_init (struct lock *);
@@ -36,7 +35,7 @@ bool lock_held_by_current_thread (const struct lock *);
 /* Condition variable. */
 struct condition 
   {
-    struct semaphore sema;
+    struct semaphore sema;        /* List of waiting threads. */
   };
 
 void cond_init (struct condition *);

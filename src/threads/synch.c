@@ -187,10 +187,10 @@ void
 lock_init (struct lock *lock)
 {
   ASSERT (lock != NULL);
+
+  lock->holder = NULL;
   list_init (&lock->waiters);
-  lock->priority=PRI_INVALID;//add priority initialization so that index0 can be compared 
-  lock->holder = NULL;//add initialization to newly defined list
-  sema_init (&lock->semaphore,1);
+  lock->priority=PRI_UNVALID;
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -216,24 +216,23 @@ lock_acquire (struct lock *lock)
     {
       cur_t = thread_current();
       list_push_back (&lock->waiters, &cur_t->elem);
-      cur_t->lock_wait = lock;
-      if(!thread_mlfqs){
-        thread_priority_transfer(cur_t);
-      }
+      cur_t->lock_waiting = lock;
+      if(thread_mlfqs==false)
+        thread_priority_donate_nest(cur_t);
       thread_block ();
     }
 
   cur_t = thread_current();
   lock->holder = cur_t;
-  cur_t->lock_wait = NULL;
-  list_push_back(&cur_t->locks,&lock->element);
-  // if(thread_mlfqs==false)
-  // {
-  //   if(lock->priority > cur_t->locks_priority)
-  //     cur_t->locks_priority = lock->priority;
-  //   if(lock->priority > cur_t->priority)
-  //     cur_t->priority = lock->priority;
-  // }
+  cur_t->lock_waiting = NULL;
+  list_push_back(&cur_t->locks,&lock->elem);
+  if(thread_mlfqs==false)
+  {
+    if(lock->priority > cur_t->locks_priority)
+      cur_t->locks_priority = lock->priority;
+    if(lock->priority > cur_t->priority)
+      cur_t->priority = lock->priority;
+  }
   intr_set_level (old_level);
 }
 
@@ -260,8 +259,8 @@ lock_try_acquire (struct lock *lock)
     {
       cur_t = thread_current();
       lock->holder = cur_t;
-      cur_t->lock_wait = NULL;
-      list_push_back(&cur_t->locks,&lock->element);
+      cur_t->lock_waiting = NULL;
+      list_push_back(&cur_t->locks,&lock->elem);
       if(thread_mlfqs==false)
       {
         if(lock->priority > cur_t->locks_priority)
@@ -295,14 +294,14 @@ lock_release (struct lock *lock)
 
   old_level = intr_disable();
   lock->holder = NULL;
-  list_remove(&lock->element);
+  list_remove(&lock->elem);
   if(thread_mlfqs==false)
-    thread_priority(thread_current());
+    thread_update_priority(thread_current());
   if(!list_empty(&lock->waiters))
   {
     e = list_max(&lock->waiters,&thread_less_priority,NULL);
     list_remove(e);
-    lock_priority_update(lock);
+    lock_update_priority(lock);
     t = list_entry(e,struct thread,elem);
     thread_unblock(t);
   }
@@ -336,7 +335,7 @@ cond_init (struct condition *cond)
 {
   ASSERT (cond != NULL);
 
-  sema_init (&cond->sema,0);
+  sema_init(&cond->sema,0);
 }
 
 /* Atomically releases LOCK and waits for COND to be signaled by
@@ -367,13 +366,12 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
-  
 
-  // list_push_back (&cond->waiters, &waiter.elem);
   lock_release (lock);
   sema_down (&cond->sema);
   lock_acquire (lock);
 }
+
 
 /* If any threads are waiting on COND (protected by LOCK), then
    this function signals one of them to wake up from its wait.
@@ -391,7 +389,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (lock_held_by_current_thread (lock));
 
   if (!list_empty (&cond->sema.waiters)) 
-    sema_up (&cond->sema);
+    sema_up(&cond->sema);
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
