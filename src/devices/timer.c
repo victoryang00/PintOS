@@ -89,10 +89,12 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  if(ticks<=0)
-    return;
-
-  thread_sleep(ticks);
+  // int64_t start = timer_ticks ();
+  if(ticks<=0)return;//ticks should not <= 0. For robustness
+  // ASSERT (intr_get_level () == INTR_ON);
+  thread_sleep(ticks);//realized in thread_sleep, so that thread can update its state and add schedule function.
+  // while (timer_elapsed (start) < ticks) 
+    // thread_yield ();
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -170,16 +172,16 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-
+  
   if(thread_mlfqs)
   {
-    thread_increase_recent_cpu();//每個ticks更新
+    thread_increase_recent_cpu();//每个ticks更新
     if(ticks % TIMER_FREQ == 0)//每秒更新
     {
       thread_recalculate_load_avg();
       thread_foreach(&thread_recalculate_recent_cpu,NULL);
     }
-    if(ticks %4 == 0)//每4個ticks更新
+    if(ticks %4 == 0)//每4个ticks更新
       thread_foreach(&thread_recalculate_priority,NULL);
   }
 

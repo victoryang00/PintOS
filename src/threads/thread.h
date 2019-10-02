@@ -18,8 +18,10 @@ enum thread_status
    You can redefine this to whatever type you like. */
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
-
+/*add the state of thread SLEEP=BLOCK so no need to add sleep to thread status but refer to it*/
+#define THREAD_SLEEP THREAD_BLOCKED
 /* Thread priorities. */
+#define PRI_INVALID -1                  /* Invalid priority. */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
@@ -93,17 +95,15 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-    struct list_elem slpelem;
-    int64_t sleep_ticks;
+    struct list_elem slpelem;//the element in sleep_list
+    int64_t sleep_ticks;//the time to wait
+    struct lock *lock_wait;//locks still waiting
+    struct list locks;//locks owned by the thread
 
-    struct lock *lock_waiting;
-    struct list locks;
-    int locks_priority;
-    int base_priority;
-
+    int locks_priority;//the top priority in the thread
+    int base_priority;//the right now priority
     int nice;
-    int recent_cpu;//用整數模擬的浮點數
-
+    int recent_cpu;//用整数模拟的浮点数
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -149,14 +149,14 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-void thread_sleep(int64_t ticks);
-void thread_foreach_sleep (void);
-bool thread_less_priority(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED);
-
-void thread_priority_donate_nest(struct thread *t);
-void thread_update_priority(struct thread *t);
-void lock_update_priority(struct lock *l);
-
+void thread_sleep(int64_t ticks);//ticks is from lib/kernel/timer.c function timer_sleep which requires the ticks(the edge between start and now)
+void thread_foreach_sleep (void);//need to define a sleep version of foreach, different from the general one, because it's already slept, so dont need the action be passed in. 
+bool thread_less_priority(const struct list_elem *compare1,const struct list_elem *compare2,void *aux UNUSED);//only once is fine for !less is greater, UNUSED is a state to see whether is used
+//declaration of thread
+void thread_priority_transfer(struct thread *t);//get nest lock
+void thread_priority(struct thread *t);//thread update priority
+void lock_priority_update(struct lock *l);//lock update priority
+//declaration of priority lock realization
 void thread_increase_recent_cpu(void);
 void thread_recalculate_load_avg(void);
 void thread_recalculate_recent_cpu(struct thread *t,void *);
