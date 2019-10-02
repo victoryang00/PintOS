@@ -4,7 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-
+#define THREAD_SLEEP THREAD_BLOCKED
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -23,7 +23,7 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-
+#define PRI_UNVALID -1
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -93,6 +93,17 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    struct list_elem slpelem;
+    int64_t sleep_ticks;
+
+    struct lock *lock_waiting;
+    struct list locks;
+    int locks_priority;
+    int base_priority;
+
+    int nice;
+    int recent_cpu;//用整數模擬的浮點數
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -138,4 +149,16 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+void thread_sleep(int64_t ticks);
+void thread_foreach_sleep (void);
+bool thread_less_priority(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED);
+
+void thread_priority_donate_nest(struct thread *t);
+void thread_update_priority(struct thread *t);
+void lock_update_priority(struct lock *l);
+
+void thread_increase_recent_cpu(void);
+void thread_recalculate_load_avg(void);
+void thread_recalculate_recent_cpu(struct thread *t,void *);
+void thread_recalculate_priority(struct thread *t,void *);
 #endif /* threads/thread.h */
