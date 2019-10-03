@@ -15,17 +15,21 @@
 #include "userprog/process.h"
 #endif
 
+/* shows that the float 1.0. */  
+#define fp_one (1<<14)
+
+/* set avg parameter for loading. */      
+static int load_avg;
+
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
-#define fp_one (1<<14) //表示浮點數1.0
-static int load_avg;
 #define THREAD_MAGIC 0xcd6abf4b
-static struct list sleep_list;
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-/*add a statistical variable of thread -- sleep list*/
+/* add a statistical variable of thread -- sleep list*/
 static struct list sleep_list;
 
 /* List of all processes.  Processes are added to this list
@@ -98,7 +102,7 @@ thread_init (void)
   list_init (&all_list);
   list_init (&sleep_list);
 
-  load_avg = 0;//全局變量初始化爲0
+  load_avg = 0;             //init the avg to 0
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -189,13 +193,9 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   struct thread *cur_t = thread_current();
-  t->nice = cur_t->nice;//創建的新線程的nice應該等於父線程的nice
-  t->recent_cpu = cur_t->recent_cpu;//理由同上
+  t->nice = cur_t->nice;                    //set up a new nice that should give its way to its father.
+  t->recent_cpu = cur_t->recent_cpu;        //the same as above.
   tid = t->tid = allocate_tid ();
-
-  /*
-  後面的代碼不用修改
-  */
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -504,8 +504,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->locks_priority=PRI_UNVALID;
   t->base_priority=priority;
 
-  t->nice = 0;//設置nice初值爲0
-  t->recent_cpu = 0;//設置recent_cpu初值爲0
+  t->nice = 0;            //set the origin to 0
+  t->recent_cpu = 0;      //set the origin to 0
 
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
@@ -537,8 +537,8 @@ next_thread_to_run (void)
     return idle_thread;
   else
   {
-    e=list_max (&ready_list,&thread_less_priority,NULL);//從前往後找到第一個優先級最高的線程
-    list_remove(e);//從就緒隊列中將選中的線程刪去
+    e=list_max (&ready_list,&thread_less_priority,NULL);  //find the first top priority in the thread from back to front
+    list_remove(e);                                       //delete from the ready thread list
     return list_entry (e, struct thread, elem);
   }
 }
@@ -625,19 +625,24 @@ allocate_tid (void)
 
   return tid;
 }
+
+/* Ticks is from lib/kernel/timer.c function timer_sleep which requires the ticks(the edge between start and now). */
 void
 thread_sleep(int64_t ticks)
 {
   enum intr_level old_level=intr_disable();
 
-  struct thread *t=thread_current();//獲取當前線程
-  t->sleep_ticks=ticks;//設置當前線程需要等待的ticks次數
-  list_push_back (&sleep_list, &t->slpelem);//將當前線程放入sleep_list隊列中
-  t->status = THREAD_SLEEP;//更新當前線程的狀態爲THREAD_SLEEP
-  schedule ();//進行線程調度，交出cpu，讓其他線程繼續執行
+  struct thread *t=thread_current();              //get the current thread.
+  t->sleep_ticks=ticks;                           //set the waiting ticks time for current thread.
+  list_push_back (&sleep_list, &t->slpelem);      //put the current thread into sleep_list.
+  t->status = THREAD_SLEEP;                       //update the current state to THREAD_SLEEP
+  schedule ();                                    //do the thread schedule, let out the resource for other thread
 
   intr_set_level(old_level);
 }
+
+
+/* If needed to define a sleep version of foreach, different from the general one, because it's already slept, so dont need the action be passed in. */
 void
 thread_foreach_sleep (void)
 {
@@ -660,6 +665,8 @@ thread_foreach_sleep (void)
 
   intr_set_level(old_level);
 }
+
+
 bool
 thread_less_priority(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED)
 {

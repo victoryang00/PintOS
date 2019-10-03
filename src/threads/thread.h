@@ -19,13 +19,13 @@ enum thread_status
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
 /*add the state of thread SLEEP=BLOCK so no need to add sleep to thread status but refer to it*/
-#define THREAD_SLEEP THREAD_BLOCKED
+#define THREAD_SLEEP THREAD_BLOCKED     /* Set for new instance sleep mode. */
 /* Thread priorities. */
-#define PRI_INVALID -1                  /* Invalid priority. */
+#define PRI_UNVALID -1                  /* Invalid priority. */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-#define PRI_UNVALID -1
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -94,16 +94,15 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+    struct list_elem slpelem;           /* the element in sleep_list. */
+    int64_t sleep_ticks;                /* the time to wait */
+    struct lock *lock_waiting;          /* locks still waiting. */
+    struct list locks;                  /* locks owned by the thread. */
 
-    struct list_elem slpelem;//the element in sleep_list
-    int64_t sleep_ticks;//the time to wait
-    struct lock *lock_wait;//locks still waiting
-    struct list locks;//locks owned by the thread
-
-    int locks_priority;//the top priority in the thread
-    int base_priority;//the right now priority
-    int nice;
-    int recent_cpu;//用整数模拟的浮点数
+    int locks_priority;                 /* the top priority in the thread. */
+    int base_priority;                  /* the right now priority. */
+    int nice;                           /* the parameter in the cpu equation. */
+    int recent_cpu;                     /* the float emulated by integet. */
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -149,9 +148,9 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-void thread_sleep(int64_t ticks);//ticks is from lib/kernel/timer.c function timer_sleep which requires the ticks(the edge between start and now)
-void thread_foreach_sleep (void);//need to define a sleep version of foreach, different from the general one, because it's already slept, so dont need the action be passed in. 
-bool thread_less_priority(const struct list_elem *compare1,const struct list_elem *compare2,void *aux UNUSED);//only once is fine for !less is greater, UNUSED is a state to see whether is used
+void thread_sleep(int64_t ticks);
+void thread_foreach_sleep (void);
+bool thread_less_priority(const struct list_elem *compare1,const struct list_elem *compare2,void *aux UNUSED);
 //declaration of thread
 void thread_priority_transfer(struct thread *t);//get nest lock
 void thread_priority(struct thread *t);//thread update priority
