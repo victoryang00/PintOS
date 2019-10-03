@@ -626,7 +626,9 @@ allocate_tid (void)
   return tid;
 }
 
-/* Ticks is from lib/kernel/timer.c function timer_sleep which requires the ticks(the edge between start and now). */
+/* Ticks is from lib/kernel/timer.c function 
+timer_sleep which requires the ticks(the edge
+ between start and now). */
 void
 thread_sleep(int64_t ticks)
 {
@@ -642,25 +644,28 @@ thread_sleep(int64_t ticks)
 }
 
 
-/* If needed to define a sleep version of foreach, different from the general one, because it's already slept, so dont need the action be passed in. */
+/* If needed to define a sleep version of 
+foreach, different from the general one, 
+because it's already slept, so dont need 
+the action be passed in. */
 void
 thread_foreach_sleep (void)
 {
   enum intr_level old_level=intr_disable();
 
   struct list_elem *e;
-
-  for (e = list_begin (&sleep_list); e != list_end (&sleep_list);
-       e = list_next (e))//遍歷sleep_list中的每一個元素
+  e = list_begin (&sleep_list);
+  while ( e != list_end (&sleep_list))                              //loop eversleep_list中的每一個元素
     {
-      struct thread *t = list_entry (e, struct thread, slpelem);//得到線程結構體
-      t->sleep_ticks--;//更新sleep_ticks
-      if(t->sleep_ticks==0)//如果還需等待的ticks爲0，即sleep時間到了
+      struct thread *t = list_entry (e, struct thread, slpelem);    //get the struct of thread
+      t->sleep_ticks--;                                             //update sleep_ticks
+      if(t->sleep_ticks==0)                                         //if the waiting ticks is 0, the sleeping time is set
       {
-        list_remove(e);//將該線程從sleep_list隊列中刪除
-        t->status = THREAD_READY;//將該線程的狀態設置爲THREAD_READY
-        list_push_back (&ready_list, &t->elem);//將該線程放入就緒隊列中
+        list_remove(e);                                             //remove the thread from sleep_list
+        t->status = THREAD_READY;                                   //set the thread's state into THREAD_READY
+        list_push_back (&ready_list, &t->elem);                     //put the thread into the ready list
       }
+      e = list_next (e);
     }
 
   intr_set_level(old_level);
