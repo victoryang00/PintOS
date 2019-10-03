@@ -655,7 +655,7 @@ thread_foreach_sleep (void)
 
   struct list_elem *e;
   e = list_begin (&sleep_list);
-  while ( e != list_end (&sleep_list))                              //loop eversleep_list中的每一個元素
+  while ( e != list_end (&sleep_list))                              //loop every element in sleep_list
     {
       struct thread *t = list_entry (e, struct thread, slpelem);    //get the struct of thread
       t->sleep_ticks--;                                             //update sleep_ticks
@@ -671,27 +671,33 @@ thread_foreach_sleep (void)
   intr_set_level(old_level);
 }
 
-
+/* only once is fine for !less is 
+greater, UNUSED is a state to see 
+whether is used. */
 bool
-thread_less_priority(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED)
+thread_less_priority(const struct list_elem *compare1,const struct list_elem *compare2,void *aux UNUSED)
 {
-  return list_entry(a,struct thread,elem)->priority<list_entry(b,struct thread,elem)->priority;
+  int compare_1=list_entry(compare1,struct thread,elem)->priority;
+  int compare_2=list_entry(compare2,struct thread,elem)->priority;
+  return compare_1<compare_2;
 }
+
+//declaration of thread, get nest lock
 void
 thread_priority_donate_nest(struct thread *t)
 {
-  struct lock *l = t->lock_waiting;//獲取當前線程等待的鎖
+  struct lock *l = t->lock_waiting;                       //get the current thread's lock.
   while(l){
-    if(t->priority > l->priority)//判斷當前線程是否能提高等待鎖的優先級
-      l->priority = t->priority;//若能，則進行優先級捐贈
+    if(t->priority > l->priority)                         //to see whether it has higher priority.
+      l->priority = t->priority;                          //if yes, donate to it's son.
     else
-      break;//若不能，則結束優先級捐贈
-    t = l->holder;//獲得佔有鎖的線程
-    if(l->priority > t->locks_priority)//判斷當前鎖是否能提高佔有線程的鎖優先級
-      t->locks_priority = l->priority;//若能，則進行優先級捐贈
+      break;                                              //if not, break.
+    t = l->holder;                                        //get the lock thread.
+    if(l->priority > t->locks_priority)                   //determine whether the currnet lock has the priority to raise the occupied thread's priority.
+      t->locks_priority = l->priority;                    //if yes, donate to occupied thread.
     else
-      break;//若不能，則結束優先級捐贈
-    if(l->priority > t->priority)//因爲鎖優先級可能低於優先級（因爲基礎優先級很高），所以這裏需要再判斷一次
+      break;                                              //if not, break.
+    if(l->priority > t->priority)                         //for robustness.
       t->priority = l->priority;
     else
       break;
@@ -699,6 +705,8 @@ thread_priority_donate_nest(struct thread *t)
   }
 }
 
+/* declaration of thread
+thread update priority. */
 void
 thread_update_priority(struct thread *t)
 {
@@ -706,20 +714,24 @@ thread_update_priority(struct thread *t)
 
   struct lock *l;
   struct list_elem *e;
-  for (e = list_begin (&t->locks); e != list_end (&t->locks);
-       e = list_next (e))//遍歷線程持有的鎖
+  e = list_begin (&t->locks);
+  while(e != list_end (&t->locks))                //loop the lock in the thread.
     {
       l = list_entry(e, struct lock, elem);
       if(l->priority > t->locks_priority)
-        t->locks_priority = l->priority;//找到其中最高的優先級作爲鎖優先級
+        t->locks_priority = l->priority;          //set the top priority to the lock thread.
+      e = list_next (e);
     }
 
-  if(t->base_priority > t->locks_priority)//更新優先級
-    t->priority = t->base_priority;
+  if(t->base_priority > t->locks_priority)        //update the priority.
+    t->priority = t->base_priority;               //also can be done by calling the donate_nest, but it's tedious.
   else
     t->priority = t->locks_priority;
+  
 }
 
+/* declaration of thread
+lock update priority. */
 void
 lock_update_priority(struct lock *l)
 {
@@ -735,6 +747,8 @@ lock_update_priority(struct lock *l)
         l->priority = t->priority;//找到其中最高的優先級
     }
 }
+
+/* declaration of priority lock realization. */
 void
 thread_increase_recent_cpu(void)//每一個tick都需要更新當前線程的recent_cpu
 {
@@ -743,6 +757,7 @@ thread_increase_recent_cpu(void)//每一個tick都需要更新當前線程的rec
     t->recent_cpu = t->recent_cpu + fp_one;//浮點加1
 }
 
+/* declaration of priority lock realization. */
 void
 thread_recalculate_load_avg(void)//每秒都需要更新全局變量load_avg
 {
@@ -752,6 +767,7 @@ thread_recalculate_load_avg(void)//每秒都需要更新全局變量load_avg
   load_avg = load_avg*59/60 + (size)*fp_one/60;
 }
 
+/* declaration of priority lock realization. */
 void
 thread_recalculate_recent_cpu(struct thread *t,void *aux UNUSED)//每秒都需要對所有線程重新計算recent_cpu
 {
@@ -761,6 +777,7 @@ thread_recalculate_recent_cpu(struct thread *t,void *aux UNUSED)//每秒都需�
                    *t->recent_cpu/fp_one+t->nice*fp_one;
 }
 
+/* declaration of priority lock realization. */
 void
 thread_recalculate_priority(struct thread *t,void *aux UNUSED)//每4個ticks都需要對所有線程重新計算優先級
 {

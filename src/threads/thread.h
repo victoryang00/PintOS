@@ -151,11 +151,11 @@ int thread_get_load_avg (void);
 void thread_sleep(int64_t ticks);
 void thread_foreach_sleep (void);
 bool thread_less_priority(const struct list_elem *compare1,const struct list_elem *compare2,void *aux UNUSED);
-//declaration of thread
-void thread_priority_transfer(struct thread *t);//get nest lock
-void thread_priority(struct thread *t);//thread update priority
-void lock_priority_update(struct lock *l);//lock update priority
-//declaration of priority lock realization
+
+void thread_priority_donate_nest(struct thread *t);
+void thread_priority(struct thread *t);
+void lock_priority_update(struct lock *l);
+
 void thread_increase_recent_cpu(void);
 void thread_recalculate_load_avg(void);
 void thread_recalculate_recent_cpu(struct thread *t,void *);
