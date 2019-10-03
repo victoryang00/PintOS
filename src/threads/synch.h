@@ -20,10 +20,10 @@ void sema_self_test (void);
 /* Lock. */
 struct lock 
   {
-    struct thread *holder;//持有當前鎖的線程
-    struct list waiters;//等待當前鎖的線程列表
-    int priority;//當前鎖的優先級，就是waiters中最高的優先級
-    struct list_elem elem;//struct thread中locks的鏈表元素
+    struct thread *holder;                            //get the current thread holder
+    struct list waiters;                              //the wait list 
+    int priority;                                     //get the current priority
+    struct list_elem elem;                            //list element in struct thread
   };
 
 void lock_init (struct lock *);

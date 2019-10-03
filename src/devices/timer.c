@@ -175,13 +175,13 @@ timer_interrupt (struct intr_frame *args UNUSED)
   
   if(thread_mlfqs)
   {
-    thread_increase_recent_cpu();//每个ticks更新
-    if(ticks % TIMER_FREQ == 0)//每秒更新
+    thread_increase_recent_cpu();             //update every tick.
+    if(ticks % TIMER_FREQ == 0)               //update every second.
     {
       thread_recalculate_load_avg();
       thread_foreach(&thread_recalculate_recent_cpu,NULL);
     }
-    if(ticks %4 == 0)//每4个ticks更新
+    if(ticks %4 == 0)                         //update every 4 ticks.
       thread_foreach(&thread_recalculate_priority,NULL);
   }
 

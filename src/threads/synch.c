@@ -114,9 +114,9 @@ sema_up (struct semaphore *sema)
 
   ASSERT (sema != NULL);
 
-  old_level = intr_disable ();
-  if (!list_empty (&sema->waiters))
-  {//如果等待队列非空，从中选择优先级最高的线程放入到就绪队列中
+  old_level = intr_disable ();            //very fancy step.
+  if (!list_empty (&sema->waiters))       //it the wait list is not empty, choose the top priority thread to put into the ready list
+  {
     e = list_max(&sema->waiters, &thread_less_priority, NULL);
     list_remove(e);
     t = list_entry(e, struct thread, elem);

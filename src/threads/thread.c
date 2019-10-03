@@ -739,27 +739,28 @@ lock_update_priority(struct lock *l)
 
   struct thread *t;
   struct list_elem *e;
-  for (e = list_begin (&l->waiters); e != list_end (&l->waiters);
-       e = list_next (e))//遍歷等待該鎖的線程
+  e = list_begin (&l->waiters);
+  while ( e != list_end (&l->waiters))                         //loop the lock in the thread.
     {
       t = list_entry(e, struct thread, elem);
       if(t->priority > l->priority)
-        l->priority = t->priority;//找到其中最高的優先級
+        l->priority = t->priority;                             //get top priority.
+      e = list_begin (&l->waiters);
     }
 }
 
 /* declaration of priority lock realization. */
 void
-thread_increase_recent_cpu(void)//每一個tick都需要更新當前線程的recent_cpu
+thread_increase_recent_cpu(void)                                //every tick have to update the previous recent_cpu.
 {
   struct thread *t = thread_current();
   if(t!=idle_thread)
-    t->recent_cpu = t->recent_cpu + fp_one;//浮點加1
+    t->recent_cpu = t->recent_cpu + fp_one;                     //float number plus one.
 }
 
 /* declaration of priority lock realization. */
 void
-thread_recalculate_load_avg(void)//每秒都需要更新全局變量load_avg
+thread_recalculate_load_avg(void)                               //every second have to get its variable load_avg.
 {
   int size=list_size(&ready_list);
   if(thread_current()!=idle_thread)
@@ -769,7 +770,7 @@ thread_recalculate_load_avg(void)//每秒都需要更新全局變量load_avg
 
 /* declaration of priority lock realization. */
 void
-thread_recalculate_recent_cpu(struct thread *t,void *aux UNUSED)//每秒都需要對所有線程重新計算recent_cpu
+thread_recalculate_recent_cpu(struct thread *t,void *aux UNUSED)          //every second have to update recent_cpu.
 {
   if(t==idle_thread)
     return;
@@ -779,7 +780,7 @@ thread_recalculate_recent_cpu(struct thread *t,void *aux UNUSED)//每秒都需�
 
 /* declaration of priority lock realization. */
 void
-thread_recalculate_priority(struct thread *t,void *aux UNUSED)//每4個ticks都需要對所有線程重新計算優先級
+thread_recalculate_priority(struct thread *t,void *aux UNUSED)             //every four ticks have to recalculate the priority.
 {
   if(t==idle_thread)
     return;
