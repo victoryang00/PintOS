@@ -437,7 +437,9 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
+        /* Modified according to the doc to make space for 
+           the return address, argc and argv. */
+        *esp = PHYS_BASE - 12;
       else
         palloc_free_page (kpage);
     }
