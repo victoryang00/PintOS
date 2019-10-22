@@ -202,7 +202,7 @@ During the loop, then, get the lock thread to `l`.
 
 In case the loop is applied just after its defination and its original priority is very high, we need a special judge after above two operations.
 
-```(Just in case.)
+```
     +--------+           +------+
     | thread |  ------>  |   l  |
     +--------+           +------+
