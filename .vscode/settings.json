@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "list.h": "c",
-        "palloc.h": "c"
+        "palloc.h": "c",
+        "shutdown.h": "c",
+        "malloc.h": "c"
     }
 }
