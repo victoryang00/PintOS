@@ -17,6 +17,9 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+//To solve the argument passing and memory access problem.
+#include"threads/malloc.h"
+#include"userprog/syscall.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -30,18 +33,43 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
+  /*use the variables to save some discriminated files and parameters.*/
+  char *para;
+  char *name=0;
+
+  /*define the thread inside process.*/
+  struct thread *t;
+  /*tid should be defaultly set as ERROR in thread.h*/
+  tid=TID_ERROR;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
-    return TID_ERROR;
+    return TID_ERROR;//tid return.
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  name=malloc(strlen(file_name)+1);
+  if(*name==0){
+    exit(0);
+  }
+  memcpy(name,file_name,strlen(file_name)+1);
+  file_name=strtok_r(name," ",&para);
+
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  tid = thread_create (name, PRI_DEFAULT, start_process, fn_copy);//use new file definition.
+  if (tid == TID_ERROR)//deall with error situation, if above operation failed or do nothing will tigger the condition.
+   {
+     exit(0);
+   }
+    // palloc_free_page (fn_copy); 
+  t=get_thread_by_tid(tid);
+  sema_down(&t->);
+  if(t->locks_priority==-1){
+    tid=TID_ERROR;
+  }
+
   return tid;
 }
 

@@ -184,7 +184,11 @@ thread_create (const char *name, int priority,
   enum intr_level old_level;
 
   ASSERT (function != NULL);
-
+  ASSERT (priority >= PRI_MIN && priority <= PRI_MAX);
+#ifdef USERPROG
+  if (list_size (&all_list) >= 35) /* Maximum capacity of threads */
+    return TID_ERROR;
+#endif
   /* Allocate thread. */
   t = palloc_get_page (PAL_ZERO);
   if (t == NULL)
@@ -196,6 +200,12 @@ thread_create (const char *name, int priority,
   t->nice = cur_t->nice;                    //set up a new nice that should give its way to its father.
   t->recent_cpu = cur_t->recent_cpu;        //the same as above.
   tid = t->tid = allocate_tid ();
+
+  /* Prepare thread for first run by initializing its stack.
+     Do this atomically so intermediate values for the 'stack' 
+     member cannot be observed. */
+  old_level = intr_disable ();
+
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -211,7 +221,8 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
-
+  
+  intr_set_level (old_level);
   /* Add to run queue. */
   thread_unblock (t);
 
