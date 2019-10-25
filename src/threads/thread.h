@@ -111,7 +111,7 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     /* Add something for the USERPROG like wake_state and ret_status. */
-    struct semaphore wait;              /* semaphore for process_wait */
+    struct semaphore *wait_list;              /* semaphore for process_wait */
     int ret_status;                     /* return status */
     struct list files;                  /* all opened files */
     struct file *self;                  /* the image file on the disk */
@@ -169,4 +169,7 @@ void thread_increase_recent_cpu(void);
 void thread_recalculate_load_avg(void);
 void thread_recalculate_recent_cpu(struct thread *t,void *);
 void thread_recalculate_priority(struct thread *t,void *);
+
+struct thread *get_thread_by_tid (tid_t);
+
 #endif /* threads/thread.h */

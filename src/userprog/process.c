@@ -50,8 +50,8 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   name=malloc(strlen(file_name)+1);
-  if(*name==0){
-    exit(0);
+  if(!name){
+    goto done;
   }
   memcpy(name,file_name,strlen(file_name)+1);
   file_name=strtok_r(name," ",&para);
@@ -61,15 +61,23 @@ process_execute (const char *file_name)
   tid = thread_create (name, PRI_DEFAULT, start_process, fn_copy);//use new file definition.
   if (tid == TID_ERROR)//deall with error situation, if above operation failed or do nothing will tigger the condition.
    {
-     exit(0);
+     goto done;
    }
     // palloc_free_page (fn_copy); 
   t=get_thread_by_tid(tid);
-  sema_down(&t->);
-  if(t->locks_priority==-1){
+  sema_down(&t->wait_list);
+  if(t->ret_status==-1){
     tid=TID_ERROR;
   }
+  while (t->status == THREAD_BLOCKED)
+    thread_unblock (t);
+  if (t->ret_status == -1)
+    process_wait (t->tid);
+done:
+  free (name);
 
+  if (tid == TID_ERROR)
+    palloc_free_page (fn_copy); 
   return tid;
 }
 
@@ -82,17 +90,92 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
+  char *token, *save_ptr;	//临时变量，用以存储分离的参数
+  void *start;				//临时变量，用以记录参数首地址
+  int argc, i;				//临时变量，用以记录参数数目
+  int *argv_off;			//用以存储到首地址的偏移量
+  size_t file_name_len;
+  struct thread *t;
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+  
+
+  t = thread_current ();				//获得当前进程
+  argc = 0;
+  argv_off = malloc (32 * sizeof (int));//为参数存储分配内存
+  if (!argv_off)						//异常处理，当内存分配失败
+    goto exit;
+  file_name_len = strlen (file_name);
+  argv_off[0] = 0;
+  for (
+       token = strtok_r (file_name, " ", &save_ptr);
+       token != NULL;
+       token = strtok_r (NULL, " ", &save_ptr)
+       )
+        {
+          while (*(save_ptr) == ' ')
+            ++save_ptr;
+          argv_off[++argc] = save_ptr - file_name;
+        }                                               //用循环及strtok_r将各个参数的偏移量记录在对应的argv_off中
+
+  
   success = load (file_name, &if_.eip, &if_.esp);
 
+//以下为按照文档中给出的用户栈中的参数存储的方式讲数据写入栈中
+  if (success)
+    {
+      t->self = filesys_open (file_name);	//打开文件
+      file_deny_write (t->self);			//文件拒绝写
+      if_.esp -= file_name_len + 1;			//将指针移到对应位置
+      start = if_.esp;						//初始地址置为栈顶
+      memcpy (if_.esp, file_name, file_name_len + 1);//内存copy，将文件名和参数copy到对应的位置
+      if_.esp -= 4 - (file_name_len + 1) % 4;//对齐
+      if_.esp -= 4;							//继续向下移动
+      *(int *)(if_.esp) = 0;				//按照格式置为0
+      //通过记录的偏移量将各个参数的地址写到对应的位置
+      for (i = argc - 1; i >= 0; --i)
+        {
+          if_.esp -= 4;
+          *(void **)(if_.esp) = start + argv_off[i]; //参数地址=首地址+偏移量
+        }
+
+      if_.esp -= 4;				//继续向下移动
+      *(char **)(if_.esp) = (if_.esp + 4); 
+      if_.esp -= 4;
+      *(int *)(if_.esp) = argc;	//记录参数数量
+      if_.esp -= 4;
+      *(int *)(if_.esp) = 0;	//按照格式写return address
+      
+      sema_up (&t->wait_list);		//释放锁，作用在上一个函数中写明
+      intr_disable ();			//关中断，以保证下面操作的原子性
+      thread_block ();
+      intr_enable ();
+    }  
+//以下为异常处理	
+  else
+    {
+      free (argv_off);
+exit:
+      t->ret_status = -1;
+      sema_up (&t->wait_list);
+      intr_disable ();
+      thread_block ();
+      intr_enable ();
+      thread_exit ();
+    }
+  
+  free (argv_off);//释放内存
+
+  
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+  /* Old Implementation 
+  if (!success)   
+    thread_exit (); */
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -116,7 +199,26 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+
+  struct thread *t;
+  int ret;
+  
+  t = get_thread_by_tid (child_tid);
+  if (!t || t->status == THREAD_DYING || t->parent == thread_current ())//判断异常
+    return -1;
+  if (t->ret_status != RET_STATUS_DEFAULT)
+    return t->ret_status;
+
+  t->parent = thread_current ();
+  // intr_disable ();
+  thread_block ();
+  // intr_enable ();
+  ret = t->ret_status;
+  printf ("%s: exit(%d)\n", t->name, t->ret_status);//状态信息输出
+  while (t->status == THREAD_BLOCKED)
+    thread_unblock (t);
+  
+  return ret;
 }
 
 /* Free the current process's resources. */
@@ -126,6 +228,16 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+ //进程结束
+  while (cur->parent && cur->parent->status == THREAD_BLOCKED)
+    thread_unblock (cur->parent);
+  file_close (cur->self);
+  cur->self = NULL;
+  intr_disable ();
+  thread_block ();
+  intr_enable ();
+
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;

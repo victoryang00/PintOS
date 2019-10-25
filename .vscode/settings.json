@@ -4,6 +4,7 @@
         "palloc.h": "c",
         "shutdown.h": "c",
         "malloc.h": "c",
-        "switch.h": "c"
+        "switch.h": "c",
+        "io.h": "c"
     }
 }

@@ -312,6 +312,7 @@ thread_exit (void)
 
 #ifdef USERPROG
   process_exit ();
+  ASSERT (list_size (&thread_current ()->files) == 0);
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
@@ -806,3 +807,21 @@ thread_recalculate_priority(struct thread *t,void *aux UNUSED)             //eve
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+struct thread *
+get_thread_by_tid (tid_t tid)
+{
+  struct list_elem *f;
+  struct thread *ret;
+  
+  ret = NULL;
+  for (f = list_begin (&all_list); f != list_end (&all_list); f = list_next (f))
+    {
+      ret = list_entry (f, struct thread, allelem);
+      ASSERT (is_thread (ret));
+      if (ret->tid == tid)
+        return ret;
+    }
+    
+  return NULL;
+}
