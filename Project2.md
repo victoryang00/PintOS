@@ -53,4 +53,4 @@ Yiwei Yang yangyw@shanghaitech.edu.cn
   struct list_elem thread_elem;
   ```
 
-  The pointer to the file and connect to the file_directory.
+  The pointer to the file and connect to the `file_directory`.
