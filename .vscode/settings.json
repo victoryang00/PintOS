@@ -7,6 +7,7 @@
         "switch.h": "c",
         "io.h": "c",
         "console.h": "c",
-        "synch.h": "c"
+        "synch.h": "c",
+        "filesystem": "c"
     }
 }

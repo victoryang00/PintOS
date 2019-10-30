@@ -131,7 +131,7 @@ syscall_handler (struct intr_frame *f UNUSED)
             const char *file_name = *((char **) esp);
             esp += sizeof(char *);
             checkvalidstring(file_name);
-            *eax = (uint32_t) remove(file_name);
+            *eax = (uint32_t) sys_remove(file_name);
             break;
         }
         case SYS_OPEN: {
@@ -139,7 +139,7 @@ syscall_handler (struct intr_frame *f UNUSED)
             const char *file_name = *((char **) esp);
             esp += sizeof(char *);
             checkvalidstring(file_name);
-            *eax = (uint32_t) open(file_name);
+            *eax = (uint32_t) sys_open(file_name);
             break;
         }
 
@@ -163,7 +163,7 @@ syscall_handler (struct intr_frame *f UNUSED)
             esp += sizeof(unsigned);
             /* check that the given buffer is all valid to access. */
             checkvalid(buffer, size);
-            *eax = (uint32_t) read(fd, buffer, size);
+            *eax = (uint32_t) sys_read(fd, buffer, size);
             break;
         }
         case SYS_WRITE: {
@@ -178,7 +178,7 @@ syscall_handler (struct intr_frame *f UNUSED)
             esp += sizeof(unsigned);
             /* check that the given buffer is all valid to access. */
             checkvalid(buffer, size);
-            *eax = (uint32_t) write(fd, buffer, size);
+            *eax = (uint32_t) sys_write(fd, buffer, size);
             break;
         }
 
@@ -189,7 +189,7 @@ syscall_handler (struct intr_frame *f UNUSED)
             checkvalid(esp, sizeof(unsigned));
             unsigned position = *((unsigned *) esp);
             esp += sizeof(unsigned);
-            seek(fd, position);
+            sys_seek(fd, position);
             break;
         }
 
@@ -197,7 +197,7 @@ syscall_handler (struct intr_frame *f UNUSED)
             checkvalid(esp, sizeof(int));
             int fd = *((int *) esp);
             esp += sizeof(int);
-            *eax = (uint32_t) tell(fd);
+            *eax = (uint32_t) sys_tell(fd);
             break;
         }
 
@@ -205,19 +205,24 @@ syscall_handler (struct intr_frame *f UNUSED)
             checkvalid(esp, sizeof(int));
             int fd = *((int *) esp);
             esp += sizeof(int);
-            close(fd);
+            sys_close(fd);
             break;
         }
     }
 
 
 }
-
+/* End of progress
+1. get the pointer of the current user thread
+2. the corresponding file open list of the user thread is cleared, and the corresponding file is closed.
+3. call the thread_exit () function, and return -1 to end the process
+4. in thread.c we added the process_exit () function, and delete all child threads.
+*/
 static void
 sys_exit(int status){
     struct thread* t;
     t = thread_current();
-    /* store the exitstatus code. */
+    /* store the exitstatus code and close all the files */
     t->exit_status = status;
     thread_exit();
 }
