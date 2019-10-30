@@ -113,8 +113,8 @@ void sema_up(struct semaphore *sema)
   old_level = intr_disable();      //very fancy step.
   if (!list_empty(&sema->waiters)) //it the wait list is not empty, choose the top priority thread to put into the ready list
   {
-    e = list_max(&sema->waiters, &thread_less_priority, NULL);
-    list_remove(e);
+    e = list_pop_front(&sema->waiters);
+    // list_remove(e);
     t = list_entry(e, struct thread, elem);
     //can be 't = list_entry(list_pop_front(&sema->waiters), struct thread, element);'
     thread_unblock(t);
@@ -182,7 +182,7 @@ void lock_init(struct lock *lock)
   ASSERT(lock != NULL);
 
   lock->holder = NULL;
-  list_init(&lock->waiters);
+  // list_init(&lock->waiters);
   // lock->priority = PRI_UNVALID;
 }
 
@@ -246,16 +246,16 @@ bool lock_try_acquire(struct lock *lock)
   ASSERT(lock != NULL);
   ASSERT(!lock_held_by_current_thread(lock));
 
-  struct thread *cur_t;
+  // struct thread *cur_t;
   enum intr_level old_level;
 
   old_level = intr_disable();
-  if (lock->holder == NULL)
-  {
-    cur_t = thread_current();
-    lock->holder = cur_t;
-    cur_t->lock_waiting = NULL;
-    list_push_back(&cur_t->locks, &lock->elem);
+  // if (lock->holder == NULL)
+  // {
+  //   cur_t = thread_current();
+  //   lock->holder = cur_t;
+    // cur_t->lock_waiting = NULL;
+    // list_push_back(&cur_t->locks, &lock->elem);
     // if (thread_mlfqs == false)
     // {
     //   if (lock->priority > cur_t->locks_priority)
@@ -263,11 +263,11 @@ bool lock_try_acquire(struct lock *lock)
     //   if (lock->priority > cur_t->priority)
     //     cur_t->priority = lock->priority;
     // }
-    success = true;
-  }
-  else
-    success = false;
-  // success=sema_try_down(&lock->semaphore);
+  //   success = true;
+  // }
+  // else
+  //   success = false;
+  success=sema_try_down(&lock->semaphore);
   intr_set_level(old_level);
 
   return success;
@@ -288,8 +288,8 @@ void lock_release(struct lock *lock)
   enum intr_level old_level;
 
   // old_level = intr_disable();
-  lock->holder = NULL;
-  list_remove(&lock->elem);
+  // lock->holder = NULL;
+  // list_remove(&lock->elem);
   // if (thread_mlfqs == false)
   //   thread_update_priority(thread_current());
   // if (!list_empty(&lock->waiters))
@@ -302,6 +302,7 @@ void lock_release(struct lock *lock)
   // }
   // thread_yield();
   // intr_set_level(old_level);
+  sema_up(&lock->semaphore);
 }
 
 /* Returns true if the current thread holds LOCK, false

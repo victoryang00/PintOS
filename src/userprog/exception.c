@@ -155,16 +155,16 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
   
-  /* 增加的代码 */
-  t = thread_current ();
-  if (not_present || (is_kernel_vaddr (fault_addr) && user))//异常处理
-    sys_exit (-1);
-  f->eip = f->eax;
-  f->eax = (uint32_t) 0xffffffff;				//将用户栈清空
-  //printf("[Killing]\n");
-  printf ("%s: exit(%d)\n", thread_name(),-1);	//打印进程终止信息
-  thread_current()->ret_status=-1;				//将进程状态标记为终止
-  thread_exit();								//进程终止
+//   /* 增加的代码 */
+//   t = thread_current ();
+//   if (not_present || (is_kernel_vaddr (fault_addr) && user))//异常处理
+//     sys_exit (-1);
+//   f->eip = f->eax;
+//   f->eax = (uint32_t) 0xffffffff;				//将用户栈清空
+//   //printf("[Killing]\n");
+//   printf ("%s: exit(%d)\n", thread_name(),-1);	//打印进程终止信息
+//   thread_current()->ret_status=-1;				//将进程状态标记为终止
+//   thread_exit();								//进程终止
   return;
 
   
