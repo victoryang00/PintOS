@@ -14,47 +14,120 @@
 #include "filesys/filesys.h"
 #include "userprog/process.h"
 
-
+/* System call handler
+  intr_frame is a register (esp) pointing to the user program. 
+  The registers here include the data of the parameter stack, 
+  the system call number, etc. */
 static void syscall_handler (struct intr_frame *);
-
+// To access the valid memory in the vaddr
 static bool valid_mem_access(const void *);
+/* triggered by SYS_EXIT
+End of progress
+1. get the pointer of the current user thread
+2. the corresponding file open list of the user thread is cleared, and the corresponding file is closed.
+3. call the thread_exit () function, and return -1 to end the process
+4. in thread.c we added the process_exit () function, and delete all child threads.
+*/
 static void sys_exit(int);
+/* triggered by SYS_WAIT
+Process waiting
+Call the start_process function under process.c
+*/
 static int sys_wait(int);
+/*triggered by SYS_HALT
+Process termination
+1, get the pointer of the current user thread
+2. The corresponding file open list of the user thread is cleared, and the corresponding file is closed.
+3, call the thread_exit () function, and return -1 to end the process
+4, in thread.c we added the process_exit () function, and remove all child threads and close the file
+*/
 static void sys_halt(void);
-static tid_t exec(const char*);
+/*triggered by SYS_EXEC
+Process execution
+Call the process_execute function under process.c
+*/
+static tid_t sys_exec(const char*);
+/*triggered by SYS_CREATE
+Create a file (sys_create (const char *file, unsigned initial_size))
+1. Get the file name of the file you want to create.
+2. If the file name is empty, it returns -1 to exit. If it exists, the filesys_create() function under filesys.c is called.
+3. The specific code is implemented as follows:
+*/
 static bool sys_create(const char* file, unsigned initial_size);
-
+/*triggered by SYS_REMOVE
+Delete Files
+Call the filesys_remove function under filesys.c
+*/
 static bool sys_remove (const char*);
+/*triggered by SYS_OPEN
+open a file
+1. Define the return value as the fd of the open file. If the open fails, return -1.
+2. Determine the name of the file passed in. If it is empty or its address is not in user space, return -1.
+3. Call the filesys_open(file) function. If the open fails (because the file corresponding to the file name does not exist), return -1.
+4, allocate space fd corresponding struct fde, if the memory space is not enough, call file_close (f) to close the file, return -1
+5, initialize fde, and press it into the system open file list and the process open the file list corresponding to the stack, and return the corresponding fd number
+6, the specific code is implemented as follows:
+*/
 static int sys_open (const char*);
+/*triggered by SYS_FILESIZE
+File size
+Call the file_length function under filesys.c
+*/
 static int file_size (int);
+/*triggered by SYS_READ
+Read operation
+1. At the time of reading, we need to lock the file to prevent it from being changed during the reading process.
+2, first determine whether it is a standard read stream, if it is standard read, directly call input_getc () read from the console, if it is a standard write stream, then call sys_exit (-1), if not standard read or standard Write, the description is read from the file. Determine whether the pointer to the buffer is correct (valid and in user space). If it is correct, find the file according to fd, and then call the file_read(f, buffer, size) function to read the buffer. Otherwise, call sys_exit(-1) to exit.
+3, pay attention to release the lock before exiting or after reading the file is completed
+4, the specific code is implemented as follows:
+*/
 static int sys_read(int fd, void* buffer, unsigned size);
+/*triggered by SYS_WRITE
+write operation
+1. At the time of writing, we need to lock the file to prevent it from being changed during the reading process.
+2, first determine whether it is a standard write stream, if it is a standard write, directly call putbuf () write to the console, if it is a standard write stream, then call sys_exit (-1), if not standard read or standard write , the description is written from the file. Determine whether the pointer to the buffer pointer is correct (valid and in user space), if it is correct, find the file according to fd, then call file_write(f, buffer, size) function to write buffer to file, otherwise call sys_exit(-1) to exit .
+3, pay attention to release the lock before exiting or after writing the file is completed
+4, the specific code is implemented as follows:
+*/
 static int sys_write(int fd, const void* buffer, unsigned size);
+/*triggered by SYS_SEEK
+Change the current cursor position
+Call the file_seek function under filesys.c
+*/
 static void sys_seek(int fd, unsigned position);
+/*triggered by SYS_TELL
+Take the current cursor position
+Call the file_tell function under filesys.c
+*/
 static unsigned sys_tell(int fd);
+/*triggered by SYS_CLOSE
+Close file
+1, according to fd find the corresponding open file in the system
+2. Determine whether the file exists. If it does not exist, it does not need to be closed, return 0. If it exists, call file_close(f) to close it, and the corresponding fd will be deleted from the system open file list and the process open file list.
+*/
 static void sys_close(int fd);
-
+//check the fd so that file can easily processed
 static int checkfd (int fd);
-
+//check the validation so that file can easily processed
 static void
 checkvalid (void *ptr,size_t size)
 {
-    /* check for nullptr, access kernel space, and the user space is not allocated. */
-
-    /* check for start address. */
+    /* check for nullptr, access kernel space, and the user space is not allocated. 
+       check for start address. */
     uint32_t *pd = thread_current ()->pagedir;
-    if ( ptr == NULL || is_kernel_vaddr (ptr) || !is_user_vaddr(ptr) || pagedir_get_page (pd, ptr) == NULL)
+    if ( ptr == NULL || is_kernel_vaddr (ptr) || !is_user_vaddr(ptr) || pagedir_get_page (pd, ptr) == NULL)//Exception handling, all the bad condition taken into consideration
     {
         sys_exit(-1);
     }
 
     /* check for end address. */
     void *ptr2=ptr+size;
-    if (ptr2 == NULL || is_kernel_vaddr (ptr2) || 	!is_user_vaddr(ptr) || 	  pagedir_get_page (pd, ptr2) == NULL)
+    if (ptr2 == NULL || is_kernel_vaddr (ptr2) || 	!is_user_vaddr(ptr) || 	  pagedir_get_page (pd, ptr2) == NULL)//Determine if you need to continue execution
     {
         sys_exit(-1);
     }
 }
-
+//check the validation so that file name can easily processed
 static void
 checkvalidstring(const char *s)
 {
@@ -65,8 +138,7 @@ checkvalidstring(const char *s)
         checkvalid (s++, sizeof(char));
 }
 
-
-
+//the init function of syscall, use lock to maintain synchronization
 void
 syscall_init (void)
 {
@@ -74,7 +146,6 @@ syscall_init (void)
     intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
     lock_init (&filesys_lock);
 }
-
 
 static void
 syscall_handler (struct intr_frame *f UNUSED)
@@ -112,7 +183,7 @@ syscall_handler (struct intr_frame *f UNUSED)
             const char *file_name = *((char **) esp);
             esp += sizeof(char *);
             checkvalidstring(file_name);
-            *eax = (uint32_t) exec(file_name);
+            *eax = (uint32_t) sys_exec(file_name);
             break;
         }
         case SYS_CREATE: {
@@ -161,7 +232,6 @@ syscall_handler (struct intr_frame *f UNUSED)
             checkvalid(esp, sizeof(unsigned));
             unsigned size = *((unsigned *) esp);
             esp += sizeof(unsigned);
-            /* check that the given buffer is all valid to access. */
             checkvalid(buffer, size);
             *eax = (uint32_t) sys_read(fd, buffer, size);
             break;
@@ -176,7 +246,6 @@ syscall_handler (struct intr_frame *f UNUSED)
             checkvalid(esp, sizeof(unsigned));
             unsigned size = *((unsigned *) esp);
             esp += sizeof(unsigned);
-            /* check that the given buffer is all valid to access. */
             checkvalid(buffer, size);
             *eax = (uint32_t) sys_write(fd, buffer, size);
             break;
@@ -209,15 +278,24 @@ syscall_handler (struct intr_frame *f UNUSED)
             break;
         }
     }
-
+  //Initialize the function pointer of the operation function corresponding to the system call number
+  syscall_vec[SYS_EXIT] = (handler)sys_exit;
+  syscall_vec[SYS_HALT] = (handler)sys_halt;
+  syscall_vec[SYS_CREATE] = (handler)sys_create;
+  syscall_vec[SYS_OPEN] = (handler)sys_open;
+  syscall_vec[SYS_CLOSE] = (handler)sys_close;
+  syscall_vec[SYS_READ] = (handler)sys_read;
+  syscall_vec[SYS_WRITE] = (handler)sys_write;
+  syscall_vec[SYS_EXEC] = (handler)sys_exec;
+  syscall_vec[SYS_WAIT] = (handler)sys_wait;
+  syscall_vec[SYS_FILESIZE] = (handler)sys_filesize;
+  syscall_vec[SYS_SEEK] = (handler)sys_seek;
+  syscall_vec[SYS_TELL] = (handler)sys_tell;
+  syscall_vec[SYS_REMOVE] = (handler)sys_remove;
+  
 
 }
-/* End of progress
-1. get the pointer of the current user thread
-2. the corresponding file open list of the user thread is cleared, and the corresponding file is closed.
-3. call the thread_exit () function, and return -1 to end the process
-4. in thread.c we added the process_exit () function, and delete all child threads.
-*/
+
 static void
 sys_exit(int status){
     struct thread* t;
@@ -238,7 +316,7 @@ sys_halt(void){
 }
 
 static tid_t
-exec(const char *file_name){
+sys_exec(const char *file_name){
     tid_t child_tid = TID_ERROR;
     child_tid = process_execute(file_name);
     return child_tid;
@@ -410,4 +488,22 @@ checkfd (int fd)
     return fd >= 0 && fd < 128;
 }
 
-
+// legacy code
+// static struct fd_elem *
+// find_fd_elem_by_fd_in_process (int fd)
+// {
+//   struct fd_elem *ret;
+//   struct list_elem *l;
+//   struct thread *t;
+  
+//   t = thread_current ();
+  
+//   // for (l = list_begin (&t->files); l != list_end (&t->files); l = list_next (l))
+//   //   {
+//   //     ret = list_entry (l, struct fd_elem, thread_elem);
+//   //     if (ret->fd == fd)
+//   //       return ret;
+//   //   }
+    
+//   return NULL;
+// }
