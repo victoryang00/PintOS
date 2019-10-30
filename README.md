@@ -222,7 +222,7 @@ It's schedule() in the function next_thread_to_run() maintain the highest priori
 
 First, we must check if priority donation is enabled (by checking the bool for mlfqs). When a call causes the priority donation, it first look at the curr lock. If the curr lock holder has a lower priority, update lock holder's locks to match the waiting thread's(in `thread_priority_donate_nest` also delt with the edge condition), and keep doing this up chain of locks while the holder pointer is not NULL. (recursive donation)
 
-#### Describe the sequence of events when lock_release() is called on a lock that a higher-priority thread is waiting for.
+#### Describe the sequence of events when is called on a lock that a higher-priority thread is waiting for.
 
 When a thread releases a lock, we take the lock off of holder. We then loop through the remaining holder and get the maximum priority element and set that to donated_priority. If no locks held, set to min. Check if our curr effective priority is still highest in ready queue and yield if not.
 

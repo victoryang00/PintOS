@@ -5,6 +5,7 @@
         "shutdown.h": "c",
         "malloc.h": "c",
         "switch.h": "c",
-        "io.h": "c"
+        "io.h": "c",
+        "console.h": "c"
     }
 }
