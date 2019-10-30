@@ -7,7 +7,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-#include "threads/io.h"
+// #include "threads/io.h"
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -35,14 +35,14 @@ static void real_time_delay (int64_t num, int32_t denom);
 void
 timer_init (void) 
 {
-  /* 8254 input frequency divided by TIMER_FREQ, rounded to
-     nearest. */
-  uint16_t count = (1193180 + TIMER_FREQ / 2) / TIMER_FREQ;
+  pit_configure_channel (0, 2, TIMER_FREQ);
+  ///* 8254 input frequency divided by TIMER_FREQ, rounded to
+  //   nearest. */
+  // uint16_t count = (1193180 + TIMER_FREQ / 2) / TIMER_FREQ;
 
-  outb (0x43, 0x34);    /* CW: counter 0, LSB then MSB, mode 2, binary. */
-  outb (0x40, count & 0xff);
-  outb (0x40, count >> 8);
-
+  // outb (0x43, 0x34);    /* CW: counter 0, LSB then MSB, mode 2, binary. */
+  // outb (0x40, count & 0xff);
+  // outb (0x40, count >> 8);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
 
@@ -180,20 +180,20 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-  
-  if(thread_mlfqs)
-  {
-    thread_increase_recent_cpu();             //update every tick.
-    if(ticks % TIMER_FREQ == 0)               //update every second.
-    {
-      thread_recalculate_load_avg();
-      thread_foreach(&thread_recalculate_recent_cpu,NULL);
-    }
-    if(ticks %4 == 0)                         //update every 4 ticks.
-      thread_foreach(&thread_recalculate_priority,NULL);
-  }
+//for project 1
+  // if(thread_mlfqs)
+  // {
+  //   thread_increase_recent_cpu();             //update every tick.
+  //   if(ticks % TIMER_FREQ == 0)               //update every second.
+  //   {
+  //     thread_recalculate_load_avg();
+  //     thread_foreach(&thread_recalculate_recent_cpu,NULL);
+  //   }
+  //   if(ticks %4 == 0)                         //update every 4 ticks.
+  //     thread_foreach(&thread_recalculate_priority,NULL);
+  // }
 
-  thread_foreach_sleep();
+  // thread_foreach_sleep();
   thread_tick ();
 }
 
