@@ -127,7 +127,7 @@ start_process (void *file_name_)
     int argc, i;				//临时变量，用以记录参数数目
     int *argv_off;			//用以存储到首地址的偏移量
     size_t file_name_len;
-    struct thread *t;
+    // struct thread *t;
     /* Initialize interrupt frame and load executable. */
     memset (&if_, 0, sizeof if_);
     if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -135,23 +135,23 @@ start_process (void *file_name_)
     if_.eflags = FLAG_IF | FLAG_MBS;
 
 
-  t = thread_current ();				//获得当前进程
-  argc = 0;
-  argv_off = malloc (32 * sizeof (int));//为参数存储分配内存
-  if (!argv_off)						//异常处理，当内存分配失败
-    goto exit;
-  file_name_len = strlen (file_name);
-  argv_off[0] = 0;
-  for (
-       token = strtok_r (file_name, " ", &save_ptr);
-       token != NULL;
-       token = strtok_r (NULL, " ", &save_ptr)
-       )
-        {
-          while (*(save_ptr) == ' ')
-            ++save_ptr;
-          argv_off[++argc] = save_ptr - file_name;
-        }                                               //用循环及strtok_r将各个参数的偏移量记录在对应的argv_off中
+//   t = thread_current ();				//获得当前进程
+//   argc = 0;
+//   argv_off = malloc (32 * sizeof (int));//为参数存储分配内存
+//   if (!argv_off)						//异常处理，当内存分配失败
+//     goto exit;
+//   file_name_len = strlen (file_name);
+//   argv_off[0] = 0;
+//   for (
+//        token = strtok_r (file_name, " ", &save_ptr);
+//        token != NULL;
+//        token = strtok_r (NULL, " ", &save_ptr)
+//        )
+//         {
+//           while (*(save_ptr) == ' ')
+//             ++save_ptr;
+//           argv_off[++argc] = save_ptr - file_name;
+//         }                                               //用循环及strtok_r将各个参数的偏移量记录在对应的argv_off中
 
   
     success = load (file_name, &if_.eip, &if_.esp);

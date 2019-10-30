@@ -435,12 +435,12 @@ find_fd_elem_by_fd_in_process (int fd)
   
   t = thread_current ();
   
-  for (l = list_begin (&t->files); l != list_end (&t->files); l = list_next (l))
-    {
-      ret = list_entry (l, struct fd_elem, thread_elem);
-      if (ret->fd == fd)
-        return ret;
-    }
+  // for (l = list_begin (&t->files); l != list_end (&t->files); l = list_next (l))
+  //   {
+  //     ret = list_entry (l, struct fd_elem, thread_elem);
+  //     if (ret->fd == fd)
+  //       return ret;
+  //   }
     
   return NULL;
 }
