@@ -6,53 +6,45 @@
 #include <stdlib.h>
 #include <string.h>
 #include "userprog/gdt.h"
-#include "userprog/pagedir.h"
-#include "userprog/tss.h"
+#include "./pagedir.h"
+#include "./tss.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
-#include "threads/palloc.h"
-#include "threads/thread.h"
+#include "../threads/palloc.h"
+#include "../threads/thread.h"
 #include "threads/vaddr.h"
-//To solve the argument passing and memory access problem.
-#include"threads/malloc.h"
-#include"userprog/syscall.h"
+#include "../threads/synch.h"
+#include "./syscall.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
-   before process_execute() returns.  Returns the new process's
+   before start_processprocess_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
 process_execute (const char *file_name)
 {
     char *fn_copy;
-    tid_t tid;
-    struct thread* child = NULL;
-    /*use the variables to save some discriminated files and parameters.*/
-    char *name=0;
     char *save_ptr;
     char *cmd;
-
-    /*define the thread inside process.*/
-    struct thread *t;
-    /*tid should be defaultly set as ERROR in thread.h*/
-    tid=TID_ERROR;
-
+    char *thread_name;
+    tid_t tid;
+    struct thread* child = NULL;
     /* Make a copy of FILE_NAME.
        Otherwise there's a race between the caller and load(). */
     fn_copy = malloc(strlen(file_name)+1);
     if (fn_copy == NULL)
         return TID_ERROR;
     strlcpy (fn_copy, file_name, strlen(file_name)+1);
-    name = malloc(strlen(file_name)+1);
-    strlcpy (name, file_name, strlen(file_name)+1);
-    cmd = strtok_r (name," ",&save_ptr);  // get the thread name
+    thread_name = malloc(strlen(file_name)+1);
+    strlcpy (thread_name, file_name, strlen(file_name)+1);
+    cmd = strtok_r (thread_name," ",&save_ptr);  // get the thread name
 
     /* To seperate the command name from its arguments. */
 
@@ -60,7 +52,7 @@ process_execute (const char *file_name)
     /* Create a new thread to execute FILE_NAME. */
     tid = thread_create (cmd, PRI_DEFAULT, start_process, fn_copy);
 
-    free(name);   //free the file name created by malloc mannually
+    free(thread_name);   //free the file name created by malloc mannually
 
     if (tid == TID_ERROR) {
         free(fn_copy);
@@ -83,35 +75,6 @@ process_execute (const char *file_name)
         }
     }
     return tid;
-//   name=malloc(strlen(file_name)+1);
-//   if(!name){
-//     goto done;
-//   }
-//   memcpy(name,file_name,strlen(file_name)+1);
-//   file_name=strtok_r(name," ",&para);
-
-
-//   /* Create a new thread to execute FILE_NAME. */
-//   tid = thread_create (name, PRI_DEFAULT, start_process, fn_copy);//use new file definition.
-//   if (tid == TID_ERROR)//deall with error situation, if above operation failed or do nothing will tigger the condition.
-//    {
-//      goto done;
-//    }
-//     // palloc_free_page (fn_copy); 
-//   t=get_thread_by_tid(tid);
-//   sema_down(&t->wait_list);
-//   if(t->ret_status==-1){
-//     tid=TID_ERROR;
-//   }
-//   while (t->status == THREAD_BLOCKED)
-//     thread_unblock (t);
-//   if (t->ret_status == -1)
-//     process_wait (t->tid);
-// done:
-//   free (name);
-
-//   if (tid == TID_ERROR)
-//     palloc_free_page (fn_copy); 
 }
 
 /* A thread function that loads a user process and starts it
@@ -122,12 +85,7 @@ start_process (void *file_name_)
     char *file_name = file_name_;
     struct intr_frame if_;
     bool success;
-    char *token, *save_ptr;	//临时变量，用以存储分离的参数
-    void *start;				//临时变量，用以记录参数首地址
-    int argc, i;				//临时变量，用以记录参数数目
-    int *argv_off;			//用以存储到首地址的偏移量
-    size_t file_name_len;
-    // struct thread *t;
+
     /* Initialize interrupt frame and load executable. */
     memset (&if_, 0, sizeof if_);
     if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -135,25 +93,6 @@ start_process (void *file_name_)
     if_.eflags = FLAG_IF | FLAG_MBS;
 
 
-//   t = thread_current ();				//获得当前进程
-//   argc = 0;
-//   argv_off = malloc (32 * sizeof (int));//为参数存储分配内存
-//   if (!argv_off)						//异常处理，当内存分配失败
-//     goto exit;
-//   file_name_len = strlen (file_name);
-//   argv_off[0] = 0;
-//   for (
-//        token = strtok_r (file_name, " ", &save_ptr);
-//        token != NULL;
-//        token = strtok_r (NULL, " ", &save_ptr)
-//        )
-//         {
-//           while (*(save_ptr) == ' ')
-//             ++save_ptr;
-//           argv_off[++argc] = save_ptr - file_name;
-//         }                                               //用循环及strtok_r将各个参数的偏移量记录在对应的argv_off中
-
-  
     success = load (file_name, &if_.eip, &if_.esp);
     /* If load failed, quit. */
 

@@ -4,8 +4,9 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "threads/synch.h"
-#define THREAD_SLEEP THREAD_BLOCKED
+#include "synch.h"
+#include "../filesys/file.h"
+
 /* States in a thread's life cycle. */
 enum thread_status
 {
@@ -19,17 +20,11 @@ enum thread_status
    You can redefine this to whatever type you like. */
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
-/*add the state of thread SLEEP=BLOCK so no need to add sleep to thread status but refer to it*/
-#define THREAD_SLEEP THREAD_BLOCKED     /* Set for new instance sleep mode. */
+
 /* Thread priorities. */
-#define PRI_UNVALID -1                  /* Invalid priority. */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-
-#ifdef USERPROG
-  #define RET_STATUS_DEFAULT 0xcdcdcdcd
-#endif
 
 /* A kernel thread or user process.
 
@@ -150,27 +145,13 @@ void thread_exit (void) NO_RETURN;
                         typedef void thread_action_func (struct thread *t, void *aux);
         void thread_foreach (thread_action_func *, void *);
 
-// int thread_get_priority (void);
-// void thread_set_priority (int);
+int thread_get_priority (void);
+void thread_set_priority (int);
 
-// int thread_get_nice (void);
-// void thread_set_nice (int);
-// int thread_get_recent_cpu (void);
-// int thread_get_load_avg (void);
-
-// void thread_sleep(int64_t ticks);
-// void thread_foreach_sleep (void);
-// bool thread_less_priority(const struct list_elem *compare1,const struct list_elem *compare2,void *aux UNUSED);
-
-// void thread_priority_donate_nest(struct thread *t);
-// void thread_priority(struct thread *t);
-// void lock_priority_update(struct lock *l);
-
-// void thread_increase_recent_cpu(void);
-// void thread_recalculate_load_avg(void);
-// void thread_recalculate_recent_cpu(struct thread *t,void *);
-// void thread_recalculate_priority(struct thread *t,void *);
-
+int thread_get_nice (void);
+void thread_set_nice (int);
+int thread_get_recent_cpu (void);
+int thread_get_load_avg (void);
 struct thread* find_thread_by_id(tid_t id);
 
 #endif /* threads/thread.h */

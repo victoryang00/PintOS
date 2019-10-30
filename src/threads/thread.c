@@ -15,12 +15,6 @@
 #include "userprog/process.h"
 #endif
 
-/* shows that the float 1.0. */
-#define fp_one (1 << 14)
-int threading_started = 0;
-/* set avg parameter for loading. */
-static int load_avg;
-
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -29,8 +23,6 @@ static int load_avg;
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-/* add a statistical variable of thread -- sleep list*/
-static struct list sleep_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -100,7 +92,7 @@ static bool is_thread (struct thread *) UNUSED;
     lock_init (&tid_lock);
     list_init (&ready_list);
     list_init (&all_list);
-//   load_avg = 0; //init the avg to 0
+
     /* Set up a thread structure for the running thread. */
     initial_thread = running_thread ();
     init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -181,12 +173,7 @@ thread_create (const char *name, int priority,
     tid_t tid;
     enum intr_level old_level;
 
-  ASSERT(function != NULL);
-  ASSERT(priority >= PRI_MIN && priority <= PRI_MAX);
-#ifdef USERPROG
-  if (list_size(&all_list) >= 35) /* Maximum capacity of threads */
-    return TID_ERROR;
-#endif
+    ASSERT (function != NULL);
 
     /* Allocate thread. */
     t = palloc_get_page (PAL_ZERO);
@@ -623,157 +610,3 @@ struct thread* find_thread_by_id(tid_t id){
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
-
-// /* Ticks is from lib/kernel/timer.c function 
-// timer_sleep which requires the ticks(the edge
-//  between start and now). */
-// void thread_sleep(int64_t ticks)
-// {
-//   enum intr_level old_level = intr_disable();
-
-//   struct thread *t = thread_current();      //get the current thread.
-//   t->sleep_ticks = ticks;                   //set the waiting ticks time for current thread.
-//   list_push_back(&sleep_list, &t->slpelem); //put the current thread into sleep_list.
-//   t->status = THREAD_SLEEP;                 //update the current state to THREAD_SLEEP
-//   schedule();                               //do the thread schedule, let out the resource for other thread
-
-//   intr_set_level(old_level);
-// }
-
-// /* If needed to define a sleep version of 
-// foreach, different from the general one, 
-// because it's already slept, so dont need 
-// the action be passed in. */
-// void thread_foreach_sleep(void)
-// {
-//   enum intr_level old_level = intr_disable();
-
-//   struct list_elem *e;
-//   e = list_begin(&sleep_list);
-//   while (e != list_end(&sleep_list)) //loop every element in sleep_list
-//   {
-//     struct thread *t = list_entry(e, struct thread, slpelem); //get the struct of thread
-//     t->sleep_ticks--;                                         //update sleep_ticks
-//     if (t->sleep_ticks == 0)                                  //if the waiting ticks is 0, the sleeping time is set
-//     {
-//       list_remove(e);                        //remove the thread from sleep_list
-//       t->status = THREAD_READY;              //set the thread's state into THREAD_READY
-//       list_push_back(&ready_list, &t->elem); //put the thread into the ready list
-//     }
-//     e = list_next(e);
-//   }
-
-//   intr_set_level(old_level);
-// }
-
-// /* only once is fine for !less is 
-// greater, UNUSED is a state to see 
-// whether is used. */
-// bool thread_less_priority(const struct list_elem *compare1, const struct list_elem *compare2, void *aux UNUSED)
-// {
-//   int compare_1 = list_entry(compare1, struct thread, elem)->priority;
-//   int compare_2 = list_entry(compare2, struct thread, elem)->priority;
-//   return compare_1 < compare_2;
-// }
-
-// //declaration of thread, get nest lock
-// void thread_priority_donate_nest(struct thread *t)
-// {
-//   struct lock *l = t->lock_waiting; //get the current thread's lock.
-//   while (l)
-//   {
-//     if (t->priority > l->priority) //to see whether it has higher priority.
-//       l->priority = t->priority;   //if yes, donate to it's son.
-//     else
-//       break;                             //if not, break.
-//     t = l->holder;                       //get the lock thread.
-//     if (l->priority > t->locks_priority) //determine whether the currnet lock has the priority to raise the occupied thread's priority.
-//       t->locks_priority = l->priority;   //if yes, donate to occupied thread.
-//     else
-//       break;                       //if not, break.
-//     if (l->priority > t->priority) //for robustness.
-//       t->priority = l->priority;
-//     else
-//       break;
-//     l = t->lock_waiting;
-//   }
-// }
-
-// /* declaration of thread
-// thread update priority. */
-// void thread_update_priority(struct thread *t)
-// {
-//   t->locks_priority = PRI_UNVALID;
-
-//   struct lock *l;
-//   struct list_elem *e;
-//   e = list_begin(&t->locks);
-//   while (e != list_end(&t->locks)) //loop the lock in the thread.
-//   {
-//     l = list_entry(e, struct lock, elem);
-//     if (l->priority > t->locks_priority)
-//       t->locks_priority = l->priority; //set the top priority to the lock thread.
-//     e = list_next(e);
-//   }
-
-//   if (t->base_priority > t->locks_priority) //update the priority.
-//     t->priority = t->base_priority;         //also can be done by calling the donate_nest, but it's tedious.
-//   else
-//     t->priority = t->locks_priority;
-// }
-
-// /* declaration of thread
-// lock update priority. */
-// void lock_update_priority(struct lock *l)
-// {
-//   l->priority = PRI_UNVALID;
-
-//   struct thread *t;
-//   struct list_elem *e;
-//   e = list_begin(&l->waiters);
-//   while (e != list_end(&l->waiters)) //loop the lock in the thread.
-//   {
-//     t = list_entry(e, struct thread, elem);
-//     if (t->priority > l->priority)
-//       l->priority = t->priority; //get top priority.
-//     e = list_begin(&l->waiters);
-//   }
-// }
-
-// /* declaration of priority lock realization. */
-// void thread_increase_recent_cpu(void) //every tick have to update the previous recent_cpu.
-// {
-//   struct thread *t = thread_current();
-//   if (t != idle_thread)
-//     t->recent_cpu = t->recent_cpu + fp_one; //float number plus one.
-// }
-
-// /* declaration of priority lock realization. */
-// void thread_recalculate_load_avg(void) //every second have to get its variable load_avg.
-// {
-//   int size = list_size(&ready_list);
-//   if (thread_current() != idle_thread)
-//     size++;
-//   load_avg = load_avg * 59 / 60 + (size)*fp_one / 60;
-// }
-
-// /* declaration of priority lock realization. */
-// void thread_recalculate_recent_cpu(struct thread *t, void *aux UNUSED) //every second have to update recent_cpu.
-// {
-//   if (t == idle_thread)
-//     return;
-//   t->recent_cpu = (((int64_t)(2 * load_avg)) * fp_one / (2 * load_avg + fp_one)) * t->recent_cpu / fp_one + t->nice * fp_one;
-// }
-
-// /* declaration of priority lock realization. */
-// void thread_recalculate_priority(struct thread *t, void *aux UNUSED) //every four ticks have to recalculate the priority.
-// {
-//   if (t == idle_thread)
-//     return;
-//   t->priority = (PRI_MAX * fp_one - (t->recent_cpu / 4) - t->nice * 2 * fp_one) / fp_one;
-//   if (t->priority > PRI_MAX)
-//     t->priority = PRI_MAX;
-//   if (t->priority < PRI_MIN)
-//     t->priority = PRI_MIN;
-// }
-

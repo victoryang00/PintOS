@@ -80,7 +80,7 @@ timer_ticks (void)
   enum intr_level old_level = intr_disable ();
   int64_t t = ticks;
   intr_set_level (old_level);
-  barrier ();
+5  // barrier ();
   return t;
 }
 
