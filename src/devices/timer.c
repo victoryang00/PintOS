@@ -7,7 +7,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-// #include "threads/io.h"
+  
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -36,13 +36,6 @@ void
 timer_init (void) 
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
-  ///* 8254 input frequency divided by TIMER_FREQ, rounded to
-  //   nearest. */
-  // uint16_t count = (1193180 + TIMER_FREQ / 2) / TIMER_FREQ;
-
-  // outb (0x43, 0x34);    /* CW: counter 0, LSB then MSB, mode 2, binary. */
-  // outb (0x40, count & 0xff);
-  // outb (0x40, count >> 8);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
 
@@ -80,7 +73,6 @@ timer_ticks (void)
   enum intr_level old_level = intr_disable ();
   int64_t t = ticks;
   intr_set_level (old_level);
-5  // barrier ();
   return t;
 }
 
@@ -98,9 +90,8 @@ void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
-  // if(ticks<=0)return;//ticks should not <= 0. For robustness
+
   ASSERT (intr_get_level () == INTR_ON);
-  // thread_sleep(ticks);//realized in thread_sleep, so that thread can update its state and add schedule function.
   while (timer_elapsed (start) < ticks) 
     thread_yield ();
 }
@@ -180,20 +171,6 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-//for project 1
-  // if(thread_mlfqs)
-  // {
-  //   thread_increase_recent_cpu();             //update every tick.
-  //   if(ticks % TIMER_FREQ == 0)               //update every second.
-  //   {
-  //     thread_recalculate_load_avg();
-  //     thread_foreach(&thread_recalculate_recent_cpu,NULL);
-  //   }
-  //   if(ticks %4 == 0)                         //update every 4 ticks.
-  //     thread_foreach(&thread_recalculate_priority,NULL);
-  // }
-
-  // thread_foreach_sleep();
   thread_tick ();
 }
 
