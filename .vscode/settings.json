@@ -8,6 +8,8 @@
         "io.h": "c",
         "console.h": "c",
         "synch.h": "c",
-        "filesystem": "c"
+        "filesystem": "c",
+        "pagedir.h": "c",
+        "stdint.h": "c"
     }
 }

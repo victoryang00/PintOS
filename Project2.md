@@ -1,56 +1,44 @@
-# Project 2
+# CS130 Project 2: User Program
 
-### Group 20
+## Group 20 Members
 
-Yuqing Yao yaoyq@shanghaitech.edu.cn
-Yiwei Yang yangyw@shanghaitech.edu.cn
+- Yuqing Yao yaoyq@shanghaitech.edu.cn
+- Yiwei Yang yangyw@shanghaitech.edu.cn
 
-## Argument Passing
+## Task 1: Argument Passing
 
-### Data structures
+In the implementation of Args Passing, I commented the project1 task2 and task3 part which may trigger list.h vaddr assertion and modify to the optimized variable settings. And in the DisignDoc, I'll not cover the structs or functions I've commented.
+
+### Data Structure 
+
+#### Edited structs
+
+##### `struct thread`
+
+- `struct file *code_file`
+
+  To store the executable code files. Once the process is `load()`ed, code_file will be loaded simultaneously. When `process_exit()`ed, lock the writes.
 
 #### Edited Functions
 
-- `void syscall_init(void)`
+- `process_execute (const char *file_name)`
   
-  declare a operational function for every system call.
-
-#### New Functions
-
-- `int sys_exit (int status)`
+  When executing the process, code_file should be processed.
   
-  In `syscall.h`, check if the process is ready for exit.
+- `load (const char *file_name, void (**eip) (void), void **esp)`
 
-- `static struct file* find_file_by_fd (int fd)`
-  
-  `static struct fd_elem * find_fd_elem_by_fd (int fd)`
+  When loading the file, code_file should be processed.
 
-  to find the pointer to the corresponding file through file id(fd).
+- `setup_stack (void **esp, char * file_name)`
 
-#### Edited Structs
+  The funtion is to map a zeroed page at the top of vaddr, in the func, we have to realize string split and other pre-processing.
 
-- `struct thread`
-  
-  ``` C
-  uint32_t *pagedir;        /* Page directory. */
-  struct semaphore wait;    /* Semaphore for process_wait */
-  int ret_status;           /* return status */
-  struct list files;        /* all opened files */
-  struct file *self;        /* the image file on the disk */
-  struct thread *parent;    /* parent process */
-  ```
+- `void process_exit (void)`
 
-  The explanation is in the comments.
+  When exiting the process, code_file should be processed.
+#### Algorithm
 
-#### New Structs
-
-- `struct fd_elem`
-  
-  ``` C
-  int fd;
-  struct file *file;
-  struct list_elem elem;
-  struct list_elem thread_elem;
-  ```
-
-  The pointer to the file and connect to the `file_directory`.
+Address | Name | Data | Type 
+0xbfffff | ---
+LearnShare | 12
+Mike |  32
