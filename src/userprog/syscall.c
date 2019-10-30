@@ -2,36 +2,36 @@
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
-#include "../threads/thread.h"
-#include "../devices/input.h"
-#include "../threads/vaddr.h"
-#include "../threads/palloc.h"
-#include "./pagedir.h"
-#include "./process.h"
-#include "../devices/shutdown.h"
-#include "../threads/synch.h"
-#include "./pagedir.h"
-#include "../filesys/filesys.h"
-#include "./process.h"
+#include "threads/thread.h"
+#include "devices/input.h"
+#include "threads/vaddr.h"
+#include "threads/palloc.h"
+#include "userprog/pagedir.h"
+#include "userprog/process.h"
+#include "devices/shutdown.h"
+#include "threads/synch.h"
+#include "userprog/pagedir.h"
+#include "filesys/filesys.h"
+#include "userprog/process.h"
 
 
 static void syscall_handler (struct intr_frame *);
 
 static bool valid_mem_access(const void *);
-static void exit(int);
-static int wait(int);
-static void halt(void);
+static void sys_exit(int);
+static int sys_wait(int);
+static void sys_halt(void);
 static tid_t exec(const char*);
-static bool create(const char* file, unsigned initial_size);
+static bool sys_create(const char* file, unsigned initial_size);
 
-static bool remove (const char*);
-static int open (const char*);
+static bool sys_remove (const char*);
+static int sys_open (const char*);
 static int file_size (int);
-static int read(int fd, void* buffer, unsigned size);
-static int write(int fd, const void* buffer, unsigned size);
-static void seek(int fd, unsigned position);
-static unsigned tell(int fd);
-static void close(int fd);
+static int sys_read(int fd, void* buffer, unsigned size);
+static int sys_write(int fd, const void* buffer, unsigned size);
+static void sys_seek(int fd, unsigned position);
+static unsigned sys_tell(int fd);
+static void sys_close(int fd);
 
 static int checkfd (int fd);
 
@@ -44,14 +44,14 @@ checkvalid (void *ptr,size_t size)
     uint32_t *pd = thread_current ()->pagedir;
     if ( ptr == NULL || is_kernel_vaddr (ptr) || !is_user_vaddr(ptr) || pagedir_get_page (pd, ptr) == NULL)
     {
-        exit (-1);
+        sys_exit(-1);
     }
 
     /* check for end address. */
     void *ptr2=ptr+size;
     if (ptr2 == NULL || is_kernel_vaddr (ptr2) || 	!is_user_vaddr(ptr) || 	  pagedir_get_page (pd, ptr2) == NULL)
     {
-        exit (-1);
+        sys_exit(-1);
     }
 }
 
@@ -91,20 +91,20 @@ syscall_handler (struct intr_frame *f UNUSED)
     switch(syscall_num) {
         /* as name suggests. No comments are needed. */
         case SYS_HALT: {
-            halt();
+            sys_halt();
             break;
         }
         case SYS_EXIT: {
             checkvalid(esp, sizeof(int));
             int status = *((int *) esp);
-            exit(status);
+            sys_exit(status);
             break;
         }
         case SYS_WAIT: {
             checkvalid(esp, sizeof(int));
             int pid = *((int *) esp);
             esp += sizeof(int);
-            *eax = (uint32_t) wait(pid);
+            *eax = (uint32_t) sys_wait(pid);
             break;
         }
         case SYS_EXEC: {
@@ -123,7 +123,7 @@ syscall_handler (struct intr_frame *f UNUSED)
             checkvalid(esp, sizeof(unsigned));
             unsigned initial_size = *((unsigned *) esp);
             esp += sizeof(unsigned);
-            *eax = (uint32_t) create(file_name, initial_size);
+            *eax = (uint32_t) sys_create(file_name, initial_size);
             break;
         }
         case SYS_REMOVE: {
@@ -214,21 +214,21 @@ syscall_handler (struct intr_frame *f UNUSED)
 }
 
 static void
-exit(int status){
+sys_exit(int status){
     struct thread* t;
     t = thread_current();
-    /* store the exit status code. */
+    /* store the exitstatus code. */
     t->exit_status = status;
     thread_exit();
 }
 
 static int
-wait(int tid){
+sys_wait(int tid){
     return process_wait(tid);
 }
 
 static void
-halt(void){
+sys_halt(void){
     shutdown_power_off();
 }
 
@@ -241,7 +241,7 @@ exec(const char *file_name){
 }
 
 static bool
-create(const char* file, unsigned initial_size) {
+sys_create(const char* file, unsigned initial_size) {
     bool retval;
     lock_acquire(&filesys_lock);
     retval = filesys_create(file, initial_size);
@@ -250,7 +250,7 @@ create(const char* file, unsigned initial_size) {
 }
 
 static bool
-remove (const char *file){
+sys_remove (const char *file){
         bool retval;
         lock_acquire (&filesys_lock);
         retval = filesys_remove (file);
@@ -259,7 +259,7 @@ remove (const char *file){
 }
 
 static int
-open(const char * file_name){
+sys_open(const char * file_name){
         struct thread* t = thread_current();
         lock_acquire (&filesys_lock);
         struct file *f = filesys_open (file_name);
@@ -297,7 +297,7 @@ file_size(int fd){
 
 
 static int
-read(int fd, void* buffer, unsigned size){
+sys_read(int fd, void* buffer, unsigned size){
     int bytes_read = 0;
     char *bufChar = NULL;
     bufChar = (char *)buffer;
@@ -324,7 +324,7 @@ read(int fd, void* buffer, unsigned size){
 }
 
 static int
-write(int fd, const void* buffer, unsigned size){
+sys_write(int fd, const void* buffer, unsigned size){
     int buffer_write = 0;
     char * buffChar = NULL;
     buffChar = (char *) buffer;
@@ -356,7 +356,7 @@ write(int fd, const void* buffer, unsigned size){
 
 
 static void
-seek(int fd, unsigned position){
+sys_seek(int fd, unsigned position){
     struct thread *t = thread_current ();
     if (checkfd (fd) && t->file[fd] != NULL)
     {
@@ -367,7 +367,7 @@ seek(int fd, unsigned position){
 }
 
 static unsigned
-tell(int fd){
+sys_tell(int fd){
     unsigned  returnvalue;
     struct thread *t = thread_current ();
 
@@ -387,7 +387,7 @@ tell(int fd){
 }
 
 static void
-close(int fd){
+sys_close(int fd){
     struct thread *t = thread_current ();
     if (checkfd(fd) && t->file[fd] != NULL)
     {
