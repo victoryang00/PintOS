@@ -4,17 +4,16 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "synch.h"
-#include "../filesys/file.h"
+#include <threads/synch.h>
 
 /* States in a thread's life cycle. */
 enum thread_status
-{
+  {
     THREAD_RUNNING,     /* Running thread. */
     THREAD_READY,       /* Not running but ready to run. */
     THREAD_BLOCKED,     /* Waiting for an event to trigger. */
     THREAD_DYING        /* About to be destroyed. */
-};
+  };
 
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
@@ -25,6 +24,16 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+struct child_thread {
+  struct list_elem child_thread_elem;
+  int exit_status;
+  int tid;
+};
+
+
+struct list sleep_list; // sleeping threads
+
 
 /* A kernel thread or user process.
 
@@ -83,7 +92,7 @@ typedef int tid_t;
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
 struct thread
-{
+  {
     /* Owned by thread.c. */
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
@@ -91,29 +100,34 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-    struct list_elem childelem;         /* List element for children processes list. */
-    struct list children;               /* List of children processes. */
-    struct list openfiles;
-    int exit_status;                    /* The exit status code */
-    int load_status;                     /* The load status coed */
-    struct semaphore load_sema;          /* The semaphore used to notify the parent process whether the child process is loaded successfully. */
-    struct semaphore exit_sema;          /* The exit semaphore. */
-    struct semaphore wait_sema;         /* The semaphore used for parent process to wait for its child process's exit. */
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct file* code_file;             /* Executable file. */
-    struct file* file[128];             /* All of the open files */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 #endif
 
+    struct dir* cwd;
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
-};
 
-/*struct for maintaining all the open files a certain thread opened */
+
+    struct semaphore exec_sema; // semaphore for child thread load
+    struct semaphore child_sema; // semaphore for child thread exit
+
+    bool exec_status; // flag for child load success
+    struct thread* parent; // parent thread
+    struct list childs; // child thread
+    int exit_status; // the exit status
+    struct list files;// the list of opened files
+    struct file * executable; // the thread executable file 
+    int max_fd; // the file descriptor used by the thread
+
+    int64_t wake_time; //For timer_sleep()
+  };
 
 
 
@@ -139,11 +153,11 @@ tid_t thread_tid (void);
 const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
-                        void thread_yield (void);
+void thread_yield (void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
-                        typedef void thread_action_func (struct thread *t, void *aux);
-        void thread_foreach (thread_action_func *, void *);
+typedef void thread_action_func (struct thread *t, void *aux);
+void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
@@ -152,6 +166,11 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-struct thread* find_thread_by_id(tid_t id);
+
+void acquire_file_lock(void);
+void release_file_lock(void);
+
+
+int child_thread_wait(int);
 
 #endif /* threads/thread.h */
