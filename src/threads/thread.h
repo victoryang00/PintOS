@@ -111,7 +111,9 @@ struct thread
     struct list mappings;               /* Memory-mapped files. */
     int next_handle;                    /* Next handle value. */
     void *user_esp;                     /* User's stack pointer. */
+    struct dir *cwd;                    /* Current directory */
 
+    /* Owned by thread.c. */
     struct list_elem childelem;         /* List element for children processes list. */
     struct list openfiles;
     int exit_status;                    /* The exit status code */

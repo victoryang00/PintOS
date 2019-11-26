@@ -46,7 +46,6 @@ process_execute (const char *file_name)
     char thread_name[16];
     char *save_ptr;
     char *cmd;
-    char *thread_name;
     tid_t tid;
     struct thread* child = NULL;
     /* Make a copy of FILE_NAME.
@@ -163,6 +162,7 @@ process_wait (tid_t child_tid) {
     struct thread *child = NULL;
     struct list_elem *e;
     /* check whether is in the children list . */
+    struct thread *cur = thread_current ();
     for (e = list_begin (&cur->children); e != list_end (&cur->children);
        e = list_next (e))
     {

@@ -292,13 +292,16 @@ void
 thread_exit (void) 
 {
   ASSERT (!intr_context ());
-
+#ifdef USERPROG
   process_exit ();
+#endif
+  syscall_exit ();
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
+  dir_close (thread_current ()->cwd);
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
@@ -483,7 +486,6 @@ init_thread (struct thread *t, const char *name, int priority, tid_t tid)
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
-
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
    returns a pointer to the frame's base. */
 static void *
