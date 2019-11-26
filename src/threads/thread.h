@@ -105,10 +105,6 @@ struct thread
     struct list_elem timer_elem;        /* Element in timer_wait_list. */
     struct semaphore timer_sema;        /* Semaphore. */
 
-    /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
-    struct hash *pages;                 /* Page table. */
-    struct file *bin_file;              /* The binary executable. */
 
     /* Owned by syscall.c. */
     struct list fds;                    /* List of file descriptors. */
@@ -116,6 +112,20 @@ struct thread
     int next_handle;                    /* Next handle value. */
     void *user_esp;                     /* User's stack pointer. */
 
+    struct list_elem childelem;         /* List element for children processes list. */
+    struct list openfiles;
+    int exit_status;                    /* The exit status code */
+    int load_status;                     /* The load status coed */
+    struct semaphore load_sema;          /* The semaphore used to notify the parent process whether the child process is loaded successfully. */
+    struct semaphore exit_sema;          /* The exit semaphore. */
+    struct semaphore wait_sema;         /* The semaphore used for parent process to wait for its child process's exit. */
+
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;                  /* Page directory. */
+    struct hash *pages;                 /* Page table. */
+    struct file *bin_file;              /* The binary executable. */
+    struct file *code_file;             /* Executable file. */
+    struct file *file[128];             /* All of the open files */
     /* hash structure to implement frame.*/
     struct hash spt;
 
@@ -174,5 +184,6 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+struct thread* find_thread_by_id(tid_t id);
 
 #endif /* threads/thread.h */
