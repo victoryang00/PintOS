@@ -2,6 +2,7 @@
 #define THREADS_THREAD_H
 
 #include <debug.h>
+#include <hash.h>
 #include <list.h>
 #include <stdint.h>
 #include "synch.h"
@@ -9,12 +10,12 @@
 
 /* States in a thread's life cycle. */
 enum thread_status
-{
+  {
     THREAD_RUNNING,     /* Running thread. */
     THREAD_READY,       /* Not running but ready to run. */
     THREAD_BLOCKED,     /* Waiting for an event to trigger. */
     THREAD_DYING        /* About to be destroyed. */
-};
+  };
 
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
@@ -83,7 +84,7 @@ typedef int tid_t;
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
 struct thread
-{
+  {
     /* Owned by thread.c. */
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
@@ -91,6 +92,11 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
+
+    /* Owned by process.c. */
+    int exit_code;                      /* Exit code. */
+    struct wait_status *wait_status;    /* This process's completion status. */
+    struct list children;               /* Completion status of children. */
     struct list_elem childelem;         /* List element for children processes list. */
     struct list children;               /* List of children processes. */
     struct list openfiles;
@@ -103,19 +109,49 @@ struct thread
     struct list_elem elem;              /* List element. */
     struct file* code_file;             /* Executable file. */
     struct file* file[128];             /* All of the open files */
+    
+    /* Alarm clock. */
+    int64_t wakeup_time;                /* Time to wake this thread up. */
+    struct list_elem timer_elem;        /* Element in timer_wait_list. */
+    struct semaphore timer_sema;        /* Semaphore. */
 
-#ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-#endif
+    struct hash *pages;                 /* Page table. */
+    struct file *bin_file;              /* The binary executable. */
+    struct file *code_file;             /* Executable file. */
+    struct file *file[128];             /* All of the open files */
+
+    /* Owned by syscall.c. */
+    struct list fds;                    /* List of file descriptors. */
+    struct list mappings;               /* Memory-mapped files. */
+    int next_handle;                    /* Next handle value. */
+    void *user_esp;                     /* User's stack pointer. */
+
+    /* OUR CODE */
+    //struct hash spt;
+    /*END OF OUR CODE */
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
-};
-
+  };
 /*struct for maintaining all the open files a certain thread opened */
 
 
+/* Tracks the completion of a process.
+   Reference held by both the parent, in its `children' list,
+   and by the child, in its `wait_status' pointer. */
+struct wait_status
+  {
+    struct list_elem elem;              /* `children' list element. */
+    struct lock lock;                   /* Protects ref_cnt. */
+    int ref_cnt;                        /* 2=child and parent both alive,
+                                           1=either child or parent alive,
+                                           0=child and parent both dead. */
+    tid_t tid;                          /* Child thread id. */
+    int exit_code;                      /* Child exit code, if dead. */
+    struct semaphore dead;              /* 1=child alive, 0=child dead. */
+  };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -139,11 +175,11 @@ tid_t thread_tid (void);
 const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
-                        void thread_yield (void);
+void thread_yield (void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
-                        typedef void thread_action_func (struct thread *t, void *aux);
-        void thread_foreach (thread_action_func *, void *);
+typedef void thread_action_func (struct thread *t, void *aux);
+void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
