@@ -98,7 +98,6 @@ struct thread
     struct wait_status *wait_status;    /* This process's completion status. */
     struct list children;               /* Completion status of children. */
     struct list_elem childelem;         /* List element for children processes list. */
-    struct list children;               /* List of children processes. */
     struct list openfiles;
     int exit_status;                    /* The exit status code */
     int load_status;                     /* The load status coed */
@@ -119,8 +118,8 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
     struct hash *pages;                 /* Page table. */
     struct file *bin_file;              /* The binary executable. */
-    struct file *code_file;             /* Executable file. */
-    struct file *file[128];             /* All of the open files */
+    // struct file *code_file;             /* Executable file. */
+    // struct file *file[128];             /* All of the open files */
 
     /* Owned by syscall.c. */
     struct list fds;                    /* List of file descriptors. */
