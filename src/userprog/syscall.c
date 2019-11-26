@@ -507,3 +507,23 @@ checkfd (int fd)
     
 //   return NULL;
 // }
+/* On thread exit, close all open files. */
+void
+syscall_exit (void)
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e, *next;
+
+  for (e = list_begin (&cur->fds); e != list_end (&cur->fds); e = next)
+    {
+      struct file_descriptor *fd;
+      fd = list_entry (e, struct file_descriptor, elem);
+      next = list_next (e);
+      file_close (fd->file);
+      dir_close (fd->dir);
+      free (fd);
+    }
+
+  if (!strcmp(cur->name, "main"))
+    flush_cache ();
+}
