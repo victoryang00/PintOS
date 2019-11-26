@@ -5,8 +5,7 @@
 #include <hash.h>
 #include <list.h>
 #include <stdint.h>
-#include "synch.h"
-#include "../filesys/file.h"
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -97,18 +96,10 @@ struct thread
     int exit_code;                      /* Exit code. */
     struct wait_status *wait_status;    /* This process's completion status. */
     struct list children;               /* Completion status of children. */
-    struct list_elem childelem;         /* List element for children processes list. */
-    struct list openfiles;
-    int exit_status;                    /* The exit status code */
-    int load_status;                     /* The load status coed */
-    struct semaphore load_sema;          /* The semaphore used to notify the parent process whether the child process is loaded successfully. */
-    struct semaphore exit_sema;          /* The exit semaphore. */
-    struct semaphore wait_sema;         /* The semaphore used for parent process to wait for its child process's exit. */
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct file* code_file;             /* Executable file. */
-    struct file* file[128];             /* All of the open files */
-    
+
     /* Alarm clock. */
     int64_t wakeup_time;                /* Time to wake this thread up. */
     struct list_elem timer_elem;        /* Element in timer_wait_list. */
@@ -118,8 +109,6 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
     struct hash *pages;                 /* Page table. */
     struct file *bin_file;              /* The binary executable. */
-    // struct file *code_file;             /* Executable file. */
-    // struct file *file[128];             /* All of the open files */
 
     /* Owned by syscall.c. */
     struct list fds;                    /* List of file descriptors. */
@@ -127,15 +116,13 @@ struct thread
     int next_handle;                    /* Next handle value. */
     void *user_esp;                     /* User's stack pointer. */
 
-    /* OUR CODE */
-    //struct hash spt;
-    /*END OF OUR CODE */
+    /* hash structure to implement frame.*/
+    struct hash spt;
+
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
-/*struct for maintaining all the open files a certain thread opened */
-
 
 /* Tracks the completion of a process.
    Reference held by both the parent, in its `children' list,
@@ -187,6 +174,5 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-struct thread* find_thread_by_id(tid_t id);
 
 #endif /* threads/thread.h */
