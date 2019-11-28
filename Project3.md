@@ -74,9 +74,16 @@ There are two important checks that must be made before a page is allocated.
 
 #### Describe how memory mapped files integrate into your virtual memory subsystem.  Explain how the page fault and eviction processes differ between swap pages and other pages.
 
+Memory mapped files are encapsulated in a struct called `mapping` in `syscall.c`. Each thread contains a list of all of the files mapped to that thread, which can be used to manage which files are present directly in memory. Otherwise, the pages containing memory mapped file information are managed just the same as any other page.
+
+The page fault and eviction process differs slightly for pages belonging to memory mapped files. Non-file related pagesare moved to a swap partition upon eviction, regardless of whether or not the page is dirty. When evicted, memory mapped file pages must only be written back to the file if modified. Otherwise, no writing is necessary -- the swap partition is avoided all together for memory mapped files.
+
 #### Explain how you determine whether a new file mapping overlaps another segment, either at the time the mapping is created or later.
+
+Pages for a new file mapping are only allocated if pages are found that are free and unmapped. The `page_allocated()` function has access to existing file mappings, and will refuse to allocate any space that is already occupied. If a new file attemps to infringe upon already mapped space, it is immediately unmapped and the process fails.
 
 ### Rationale
 
 #### Mappings created with "mmap" have similar semantics to those of data demand-paged from executables, except that "mmap" mappings are written back to their original files, not to swap.  This implies that much of their implementation can be shared.  Explain why your implementation either does or does not share much of the code for the two situations.
 
+The code is largely shared between processes. Any page, regardless of origin, will ultimately be pages out via the same `page_out()` function in `page.c`. The only difference is a check to see whether or not the page should be written back out of disk. If the page is marked as private then it should be swapped to the swap partition, otherwise it should be written out to the file on the disk. This makes it easier than writing separately for different page types.
