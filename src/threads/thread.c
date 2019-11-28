@@ -14,7 +14,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/syscall.h"
-#include "vm/frame.h" //I ADDED
+#include "vm/frame.h" 
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -292,16 +292,16 @@ void
 thread_exit (void) 
 {
   ASSERT (!intr_context ());
-
-  syscall_exit ();
 #ifdef USERPROG
   process_exit ();
 #endif
+  syscall_exit ();
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
+  dir_close (thread_current ()->cwd);
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
@@ -486,7 +486,6 @@ init_thread (struct thread *t, const char *name, int priority, tid_t tid)
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
-
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
    returns a pointer to the frame's base. */
 static void *
@@ -600,3 +599,12 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+struct thread* find_thread_by_id(tid_t id){
+    struct list_elem *e;
+    for(e = list_begin(&all_list);e!= list_end(&all_list); e=list_next(e)){
+        struct thread *t = list_entry(e,struct thread, allelem);
+        if(t->tid == id) return t;
+    }
+    return NULL;
+}
