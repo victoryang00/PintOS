@@ -8,10 +8,10 @@
 #include "devices/shutdown.h"
 #include "devices/block.h"
 // #include "devices/block.c"
-#include "filesys/directory.h"
+#include "filesys/directory.c"
 #include "filesys/filesys.h"
-#include "filesys/file.h"
-#include "filesys/inode.h"
+#include "filesys/file.c"
+#include "filesys/inode.c"
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
 #include "threads/palloc.h"
@@ -523,7 +523,7 @@ sys_chdir (const char *dir)
 static bool
 sys_mkdir (const char *dir)
 {
-  struct dir *last_dir = get_last_directory (dir);
+  struct dir * last_dir = get_last_directory (dir);
   if (!last_dir) {
     return false;
   }
@@ -681,8 +681,9 @@ get_last_directory_relative (const char *path)
   struct dir *cwd = thread_current ()->cwd;
   struct dir *dir = dir_reopen (cwd);
   struct dir *prev = dir_reopen (cwd);
+  struct dir_entry e;
   size_t ofs;
-  struct inode *inode = dir->inode;
+  struct inode *inode = dir->inode;;
   struct inode *prev_inode = prev->inode;
   bool found;
   while (next_part)

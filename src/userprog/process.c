@@ -18,12 +18,10 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "threads/synch.h"
-#include "userprog/syscall.h"
-
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load (const char *cmd_line, void (**eip) (void), void **esp);
+
 /* Data structure shared between process_execute() in the
    invoking thread and start_process() in the newly invoked
    thread. */
@@ -35,42 +33,29 @@ struct exec_info
     bool success;                       /* Program successfully loaded? */
     struct dir *cwd;                    /* Parent's working directory */
   };
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
-   before start_processprocess_execute() returns.  Returns the new process's
+   before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
 process_execute (const char *file_name)
 {
-    struct exec_info exec;
-    char thread_name[16];
-    char *save_ptr;
-    char *cmd;
-    tid_t tid;
-    struct thread* child = NULL;
-    /* Make a copy of FILE_NAME.
-       Otherwise there's a race between the caller and load(). */
-    // fn_copy = malloc(strlen(file_name)+1);
-    // if (fn_copy == NULL)
-    //     return TID_ERROR;
-    // strlcpy (fn_copy, file_name, strlen(file_name)+1);
-    // thread_name = malloc(strlen(file_name)+1);
-    // strlcpy (thread_name, file_name, strlen(file_name)+1);
-    // cmd = strtok_r (thread_name," ",&save_ptr);  // get the thread name
+  struct exec_info exec;
+  char thread_name[16];
+  char *save_ptr;
+  tid_t tid;
 
-    /* To seperate the command name from its arguments. */
-     /* Initialize exec_info. */
-    exec.file_name = file_name; //use the struct implementation to make it faster
-    sema_init (&exec.load_done, 0);
-    exec.cwd = thread_current ()->cwd;
+  /* Initialize exec_info. */
+  exec.file_name = file_name;
+  sema_init (&exec.load_done, 0);
+  exec.cwd = thread_current ()->cwd;
 
-    /* Create a new thread to execute FILE_NAME. */
-    // tid = thread_create (cmd, PRI_DEFAULT, start_process, fn_copy);
-
-    strlcpy (thread_name, file_name, sizeof thread_name);
-    strtok_r (thread_name, " ", &save_ptr);//use strtok_r to ensure the atomic implementation.
-    tid = thread_create (thread_name, PRI_DEFAULT, start_process, &exec);
-    if (tid != TID_ERROR)
+  /* Create a new thread to execute FILE_NAME. */
+  strlcpy (thread_name, file_name, sizeof thread_name);
+  strtok_r (thread_name, " ", &save_ptr);
+  tid = thread_create (thread_name, PRI_DEFAULT, start_process, &exec);
+  if (tid != TID_ERROR)
     {
       sema_down (&exec.load_done);
       if (exec.success)
@@ -78,32 +63,38 @@ process_execute (const char *file_name)
       else
         tid = TID_ERROR;
     }
-    return tid;
+
+  return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *exec_)
 {
-    struct exec_info *exec = file_name_;//set more information
-    struct intr_frame if_;
-    bool success;
+  struct exec_info *exec = exec_;
+  struct intr_frame if_;
+  bool success;
 
-    /* Initialize interrupt frame and load executable. */
-    memset (&if_, 0, sizeof if_);
-    if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
-    if_.cs = SEL_UCSEG;
-    if_.eflags = FLAG_IF | FLAG_MBS;
-    success = load (exec->file_name, &if_.eip, &if_.esp);
-    /* If load failed, quit. */
+  /* Initialize interrupt frame and load executable. */
+  memset (&if_, 0, sizeof if_);
+  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+  if_.cs = SEL_UCSEG;
+  if_.eflags = FLAG_IF | FLAG_MBS;
+  success = load (exec->file_name, &if_.eip, &if_.esp);
 
-    struct thread* t = thread_current();
-
-
-      if (success)
+  /* Allocate wait_status. */
+  if (success)
     {
-      lock_init (&exec->wait_status->lock);//implement with 2 semephore to optimize
+      exec->wait_status = thread_current ()->wait_status
+        = malloc (sizeof *exec->wait_status);
+      success = exec->wait_status != NULL;
+    }
+
+  /* Initialize wait_status. */
+  if (success)
+    {
+      lock_init (&exec->wait_status->lock);
       exec->wait_status->ref_cnt = 2;
       exec->wait_status->tid = thread_current ()->tid;
       exec->wait_status->exit_code = -1;
@@ -121,15 +112,16 @@ start_process (void *file_name_)
   if (!success)
     thread_exit ();
 
-    /* Start the user process by simulating a return from an
-       interrupt, implemented by intr_exit (in
-       threads/intr-stubs.S).  Because intr_exit takes all of its
-       arguments on the stack in the form of a `struct intr_frame',
-       we just point the stack pointer (%esp) to our stack frame
-       and jump to it. */
-    asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
-    NOT_REACHED ();
+  /* Start the user process by simulating a return from an
+     interrupt, implemented by intr_exit (in
+     threads/intr-stubs.S).  Because intr_exit takes all of its
+     arguments on the stack in the form of a `struct intr_frame',
+     we just point the stack pointer (%esp) to our stack frame
+     and jump to it. */
+  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
+  NOT_REACHED ();
 }
+
 /* Releases one reference to CS and, if it is now unreferenced,
    frees it. */
 static void
@@ -150,20 +142,14 @@ release_child (struct wait_status *cs)
    exception), returns -1.  If TID is invalid or if it was not a
    child of the calling process, or if process_wait() has already
    been successfully called for the given TID, returns -1
-   immediately, without waiting.
-
-   This function will be implemented in problem 2-2.  For now, it
-   does nothing. */
+   immediately, without waiting. */
 int
-process_wait (tid_t child_tid) {
-    int a = child_tid;
-    int exit_status;
-    struct thread *t = thread_current();
-    struct thread *child = NULL;
-    struct list_elem *e;
-    /* check whether is in the children list . */
-    struct thread *cur = thread_current ();
-    for (e = list_begin (&cur->children); e != list_end (&cur->children);
+process_wait (tid_t child_tid)
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e;
+
+  for (e = list_begin (&cur->children); e != list_end (&cur->children);
        e = list_next (e))
     {
       struct wait_status *cs = list_entry (e, struct wait_status, elem);
@@ -177,20 +163,8 @@ process_wait (tid_t child_tid) {
           return exit_code;
         }
     }
-    /* if pid is not in its children list, return immediately. */
-    // if (e == list_end(&t->children)) {
-        return -1;
-    }
-
-    /* Since one process will not wait for its child process twice. So we can remove the child process from its children list.
-      So that we can return immediately next time when we want to wait for the same child process twice since it is no longer in the
-      children list.. Morever, generally, the child process should actually exit when its parent process is exit, since
-      there is no need to maintain its exit status, their parent is dead and no one will look up its exit status*/
-//     list_remove(&child->childelem);
-//     exit_status = child->exit_status;
-//     sema_up(&child->exit_sema);
-//     return exit_status;
-// }
+  return -1;
+}
 
 /* Free the current process's resources. */
 void
@@ -224,20 +198,19 @@ process_exit (void)
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
-    if (pd != NULL)
+  if (pd != NULL)
     {
-        /* Correct ordering here is crucial.  We must set
-           cur->pagedir to NULL before switching page directories,
-           so that a timer interrupt can't switch back to the
-           process page directory.  We must activate the base page
-           directory before destroying the process's page
-           directory, or our active page directory will be one
-           that's been freed (and cleared). */
-        cur->pagedir = NULL;
-        pagedir_activate (NULL);
-        pagedir_destroy (pd);
+      /* Correct ordering here is crucial.  We must set
+         cur->pagedir to NULL before switching page directories,
+         so that a timer interrupt can't switch back to the
+         process page directory.  We must activate the base page
+         directory before destroying the process's page
+         directory, or our active page directory will be one
+         that's been freed (and cleared). */
+      cur->pagedir = NULL;
+      pagedir_activate (NULL);
+      pagedir_destroy (pd);
     }
-
 }
 
 /* Sets up the CPU for running user code in the current
@@ -246,16 +219,16 @@ process_exit (void)
 void
 process_activate (void)
 {
-    struct thread *t = thread_current ();
+  struct thread *t = thread_current ();
 
-    /* Activate thread's page tables. */
-    pagedir_activate (t->pagedir);
+  /* Activate thread's page tables. */
+  pagedir_activate (t->pagedir);
 
-    /* Set thread's kernel stack for use in processing
-       interrupts. */
-    tss_update ();
+  /* Set thread's kernel stack for use in processing
+     interrupts. */
+  tss_update ();
 }
-
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -272,7 +245,7 @@ typedef uint16_t Elf32_Half;
 /* Executable header.  See [ELF1] 1-4 to 1-8.
    This appears at the very beginning of an ELF binary. */
 struct Elf32_Ehdr
-{
+  {
     unsigned char e_ident[16];
     Elf32_Half    e_type;
     Elf32_Half    e_machine;
@@ -287,13 +260,13 @@ struct Elf32_Ehdr
     Elf32_Half    e_shentsize;
     Elf32_Half    e_shnum;
     Elf32_Half    e_shstrndx;
-};
+  };
 
 /* Program header.  See [ELF1] 2-2 to 2-4.
    There are e_phnum of these, starting at file offset e_phoff
    (see [ELF1] 1-6). */
 struct Elf32_Phdr
-{
+  {
     Elf32_Word p_type;
     Elf32_Off  p_offset;
     Elf32_Addr p_vaddr;
@@ -302,7 +275,7 @@ struct Elf32_Phdr
     Elf32_Word p_memsz;
     Elf32_Word p_flags;
     Elf32_Word p_align;
-};
+  };
 
 /* Values for p_type.  See [ELF1] 2-3. */
 #define PT_NULL    0            /* Ignore. */
