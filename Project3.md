@@ -64,7 +64,7 @@ There are two important checks that must be made before a page is allocated.
 
 There is an internal lock for frame table and swap table. For supplemental page table, it might be used by other process during eviction, so to avoid confusion and allow synchronization, we add a lock to each supplemental page table entry.
 
-These three parts 
+These three parts are ensured not to interact with other parts in terms of lock acquiring. So that we won't have the situation like holding one lock and acquire another lock, which means no deadlock.
 
 #### A page fault in process P can cause another process Q's frame to be evicted.  How do you ensure that Q cannot access or modify the page during the eviction process?  How do you avoid a race between P evicting Q's frame and Q faulting the page back in?
 
