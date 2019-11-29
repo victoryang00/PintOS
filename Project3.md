@@ -19,7 +19,7 @@ The process of finding a free frame in memory is conducted by `frame_alloc_and_l
 
 #### How does your code coordinate accessed and dirty bits between kernel and user virtual addresses that alias a single frame, or alternatively how do you avoid the issue?
 
-
+We avoid this issue by only accessing the virtual address.
 
 ### Synchronization
 
@@ -30,6 +30,8 @@ Searching into the frame table (usually to find a free frame) is limited to a si
 ### Rationale
 
 #### Why did you choose the data structure(s) that you did for representing virtual-to-physical mappings?
+
+We use a hash map because it allows an $O(1)$ and space-efficient method for managing the mapped pages of each process. We need to support fast lookups in the mapping, so an $O(1)$ algorithm is necessary and satisfying.
 
 ## Paging to and from Disk
 
@@ -45,6 +47,10 @@ If the frame being searched for has no page associated with it then we immediate
 
 #### When a process P obtains a frame that was previously used by a process Q, how do you adjust the page table (and any other data structures) to reflect the frame Q no longer has?
 
+When P obtains a frame that was used by Q, we first pin the frame, acquire the lock for the supplemental page table entry associated with that page, and then remove it from process Q's page table. This means that process Q will fault upon any success to this frame from now, nut it will have to block on acquiring the supplemental page table entry lock before unevicting its frame.
+
+Depending on the property of Q, it will be written to disk or swap.
+
 #### Explain your heuristic for deciding whether a page fault for an invalid virtual address should cause the stack to be extended into the page that faulted.
 
 There are two important checks that must be made before a page is allocated.
@@ -55,6 +61,10 @@ There are two important checks that must be made before a page is allocated.
 ### Synchronization
 
 #### Explain the basics of your VM synchronization design.  In particular, explain how it prevents deadlock.  (Refer to the textbook for an explanation of the necessary conditions for deadlock.)
+
+There is an internal lock for frame table and swap table. For supplemental page table, it might be used by other process during eviction, so to avoid confusion and allow synchronization, we add a lock to each supplemental page table entry.
+
+These three parts 
 
 #### A page fault in process P can cause another process Q's frame to be evicted.  How do you ensure that Q cannot access or modify the page during the eviction process?  How do you avoid a race between P evicting Q's frame and Q faulting the page back in?
 
