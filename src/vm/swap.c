@@ -74,12 +74,10 @@ swap_out (struct page *p)
   p->sector = slot * PAGE_SECTORS;
 
   // Write out page sectors
-/* add code here */
-  /* OUR CODE */ 
+
   for(i = 0; i < PAGE_SECTORS; i++){
      block_write (swap_device, p->sector + i, p->frame->base + i * BLOCK_SECTOR_SIZE);
   } 
-  /* END OF OUR CODE*/
  
   p->private = false;
   p->file = NULL;

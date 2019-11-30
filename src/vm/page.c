@@ -51,16 +51,12 @@ page_for_addr (const void *address)
         return hash_entry (e, struct page, hash_elem);
 
       /* No page.  Expand stack? */
-      /* add code */
-      /* OUR CODE */
-
       if(address >= PHYS_BASE - STACK_MAX){ //Are we bigger than the max size of the stack?
          if(address >= thread_current ()->user_esp - 32){ //Is the page fault area in the user addr space? If so, we can expand our stack!
 	    //Uh oh, we are too big we need to expand the stack
             return page_allocate ((void *) address, false);
 	 }
       }
-      /* END OF OUR CODE */
 
     }
   return NULL;
