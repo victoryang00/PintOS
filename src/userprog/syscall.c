@@ -1,171 +1,53 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
-#include "threads/interrupt.h"
-#include "threads/thread.h"
-#include "devices/input.h"
-#include "threads/vaddr.h"
-#include "threads/palloc.h"
-#include "userprog/pagedir.h"
 #include "userprog/process.h"
+#include "userprog/pagedir.h"
+#include "devices/input.h"
 #include "devices/shutdown.h"
-#include "threads/synch.h"
+#include "filesys/directory.h"
 #include "filesys/filesys.h"
+#include "filesys/file.h"
+#include "threads/interrupt.h"
+#include "threads/malloc.h"
+#include "threads/palloc.h"
+#include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "vm/page.h"
-
-/* System call handler
-  intr_frame is a register (esp) pointing to the user program. 
-  The registers here include the data of the parameter stack, 
-  the system call number, etc. */
-static void syscall_handler (struct intr_frame *);
-// To access the valid memory in the vaddr
-static bool valid_mem_access(const void *);
-// For swap
-static void copy_in (void *, const void *, size_t);
-/* triggered by SYS_EXIT
-End of progress
-1. get the pointer of the current user thread
-2. the corresponding file open list of the user thread is cleared, and the corresponding file is closed.
-3. call the thread_exit () function, and return -1 to end the process
-4. in thread.c we added the process_exit () function, and delete all child threads.
-*/
-static void sys_exit(int status);
-/* triggered by SYS_WAIT
-Process waiting
-Call the start_process function under process.c
-*/
-static int sys_wait(tid_t);
-/*triggered by SYS_HALT
-Process termination
-1, get the pointer of the current user thread
-2. The corresponding file open list of the user thread is cleared, and the corresponding file is closed.
-3, call the thread_exit () function, and return -1 to end the process
-4, in thread.c we added the process_exit () function, and remove all child threads and close the file
-*/
-static void sys_halt(void);
-/*triggered by SYS_EXEC
-Process execution
-Call the process_execute function under process.c
-*/
-static tid_t sys_exec(const char *ufile);
-/*triggered by SYS_CREATE
-Create a file (sys_create (const char *file, unsigned initial_size))
-1. Get the file name of the file you want to create.
-2. If the file name is empty, it returns -1 to exit. If it exists, the filesys_create() function under filesys.c is called.
-3. The specific code is implemented as follows:
-*/
-static bool sys_create(const char* ufile, unsigned initial_size);
-/*triggered by SYS_REMOVE
-Delete Files
-Call the filesys_remove function under filesys.c
-*/
-static bool sys_remove (const char *ufile);
-/*triggered by SYS_OPEN
-open a file
-1. Define the return value as the fd of the open file. If the open fails, return -1.
-2. Determine the name of the file passed in. If it is empty or its address is not in user space, return -1.
-3. Call the filesys_open(file) function. If the open fails (because the file corresponding to the file name does not exist), return -1.
-4, allocate space fd corresponding struct fde, if the memory space is not enough, call file_close (f) to close the file, return -1
-5, initialize fde, and press it into the system open file list and the process open the file list corresponding to the stack, and return the corresponding fd number
-6, the specific code is implemented as follows:
-*/
-static int sys_open (const char*ufile);
-/*triggered by SYS_FILESIZE
-File size
-Call the file_length function under filesys.c
-*/
+ 
+ 
+static int sys_halt (void);
+static int sys_exit (int status);
+static int sys_exec (const char *ufile);
+static int sys_wait (tid_t);
+static int sys_create (const char *ufile, unsigned initial_size);
+static int sys_remove (const char *ufile);
+static int sys_open (const char *ufile);
 static int sys_filesize (int handle);
-/*triggered by SYS_READ
-Read operation
-1. At the time of reading, we need to lock the file to prevent it from being changed during the reading process.
-2, first determine whether it is a standard read stream, if it is standard read, directly call input_getc () read from the console, if it is a standard write stream, then call sys_exit (-1), if not standard read or standard Write, the description is read from the file. Determine whether the pointer to the buffer is correct (valid and in user space). If it is correct, find the file according to fd, and then call the file_read(f, buffer, size) function to read the buffer. Otherwise, call sys_exit(-1) to exit.
-3, pay attention to release the lock before exiting or after reading the file is completed
-4, the specific code is implemented as follows:
-*/
-static int sys_read(int handle, void *udst_, unsigned size);
-/*triggered by SYS_WRITE
-write operation
-1. At the time of writing, we need to lock the file to prevent it from being changed during the reading process.
-2, first determine whether it is a standard write stream, if it is a standard write, directly call putbuf () write to the console, if it is a standard write stream, then call sys_exit (-1), if not standard read or standard write , the description is written from the file. Determine whether the pointer to the buffer pointer is correct (valid and in user space), if it is correct, find the file according to fd, then call file_write(f, buffer, size) function to write buffer to file, otherwise call sys_exit(-1) to exit .
-3, pay attention to release the lock before exiting or after writing the file is completed
-4, the specific code is implemented as follows:
-*/
-static int sys_write(int handle, void *usrc_, unsigned size);
-/*triggered by SYS_SEEK
-Change the current cursor position
-Call the file_seek function under filesys.c
-*/
-static void sys_seek(int handle, unsigned position);
-/*triggered by SYS_TELL
-Take the current cursor position
-Call the file_tell function under filesys.c
-*/
-static unsigned sys_tell(int handle);
-/*triggered by SYS_CLOSE
-Close file
-1. according to fd find the corresponding open file in the system
-2. Determine whether the file exists. If it does not exist, it does not need to be closed, return 0. If it exists, call file_close(f) to close it, and the corresponding fd will be deleted from the system open file list and the process open file list.
-*/
-static void sys_close(int handle);
-/*triggered by memory map
-Mmap system call
-1. according to fd find the corresponding open file in the system
-2. Determine whether the file exists. If it does not exist, it does not need to be closed, return 0. If it exists, call file_close(f) to close it, and the corresponding fd will be deleted from the system open file list and the process open file list.
-*/
+static int sys_read (int handle, void *udst_, unsigned size);
+static int sys_write (int handle, void *usrc_, unsigned size);
+static int sys_seek (int handle, unsigned position);
+static int sys_tell (int handle);
+static int sys_close (int handle);
 static int sys_mmap (int handle, void *addr);
-/*triggered by memory unmap
-Munmap system call
-1.
-*/
 static int sys_munmap (int mapping);
-
-//check the fd so that file can easily processed
-// static int checkfd (int handle);
-//check the validation so that file can easily processed
-/* legacy code, implemented in process.c. */
-// static void
-// checkvalid (void *ptr,size_t size)
-// {
-//     /* check for nullptr, access kernel space, and the user space is not allocated. 
-//        check for start address. */
-//     uint32_t *pd = thread_current ()->pagedir;
-//     if ( ptr == NULL || is_kernel_vaddr (ptr) || !is_user_vaddr(ptr) || pagedir_get_page (pd, ptr) == NULL)//Exception handling, all the bad condition taken into consideration
-//     {
-//         sys_exit(-1);
-//     }
-
-//     /* check for end address. */
-//     void *ptr2=ptr+size;
-//     if (ptr2 == NULL || is_kernel_vaddr (ptr2) || 	!is_user_vaddr(ptr) || 	  pagedir_get_page (pd, ptr2) == NULL)//Determine if you need to continue execution
-//     {
-//         sys_exit(-1);
-//     }
-// }
-//check the validation so that file name can easily processed
-// static void
-// checkvalidstring(const char *s)
-// {
-//     /* check one bit at a time*/
-//     checkvalid (s, sizeof(char));
-//     /* check until the end of C style string. */
-//     while (*s != '\0')
-//         checkvalid (s++, sizeof(char));
-// }
-
+ 
+static void syscall_handler (struct intr_frame *);
+static void copy_in (void *, const void *, size_t);
 
 static struct lock fs_lock;
-
-//the init function of syscall, use lock to maintain synchronization
+ 
 void
-syscall_init (void)
+syscall_init (void) 
 {
-    /* register and initialize the system call handler. */
-    intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-    lock_init (&fs_lock);
+  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init (&fs_lock);
 }
-
+ 
+/* System call handler. */
 static void
-syscall_handler (struct intr_frame *f UNUSED)//updated version
+syscall_handler (struct intr_frame *f) 
 {
   typedef int syscall_function (int, int, int);
 
@@ -215,7 +97,7 @@ syscall_handler (struct intr_frame *f UNUSED)//updated version
      and set the return value. */
   f->eax = sc->func (args[0], args[1], args[2]);
 }
-
+ 
 /* Copies SIZE bytes from user address USRC to kernel address
    DST.
    Call thread_exit() if any of the user accesses are invalid. */
@@ -241,6 +123,7 @@ copy_in (void *dst_, const void *usrc_, size_t size)
       size -= chunk_size;
     }
 }
+ 
 /* Creates a copy of user string US in kernel memory
    and returns it as a page that must be freed with
    palloc_free_page().
@@ -693,7 +576,10 @@ sys_mmap (int handle, void *addr)
 static int
 sys_munmap (int mapping) 
 {
+/* add code here */
+ /* OUR CODE */
   unmap (lookup_mapping (mapping));
+ /* END OF OUR CODE */
  return 0;
 }
  
