@@ -219,7 +219,8 @@ process_exit (void)
   if (cur->wait_status != NULL)
     {
       struct wait_status *cs = cur->wait_status;
-      printf ("%s: exit(%d)\n", cur->name, cs->exit_code);
+      // printf ("%s: exit(%d)\n", cur->name, cs->exit_code);
+      cs->exit_code = cur->exit_code;
       sema_up (&cs->dead);
       release_child (cs);
     }
@@ -232,6 +233,11 @@ process_exit (void)
       next = list_remove (e);
       release_child (cs);
     }
+  /* Destroy the page hash table. */
+  page_exit ();
+  
+  /* Close executable (and allow writes). */
+  file_close (cur->bin_file);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
