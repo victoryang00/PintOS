@@ -158,6 +158,7 @@ There are two important checks that must be made before a page is allocated.
 
 #### Explain the basics of your VM synchronization design.  In particular, explain how it prevents deadlock.  (Refer to the textbook for an explanation of the necessary conditions for deadlock.)
 
+<<<<<<< HEAD
 These three parts are ensured not to interact with other parts in terms of lock acquiring. So that we won't have the situation like holding one lock and acquire another lock, which means no deadlock.
 
 1). The table is changed during the access to the frame table, stp, and swap table;
@@ -170,6 +171,11 @@ Solutions:
 1. Use pintos lock variables for each supplymentary page table entry   to lock when reading and writing to the memory bank and unlock after reading and writing to achieve a synchronous mutex mechanism.
 
 2. The member variable of struct thread is responsible for the management of the supplementary page table of this process. Since the file mapping information is stored in the supplementary page table entry, it is also responsible for the control of file mapping.
+=======
+There is an internal lock for frame table and swap table. For supplemental page table, it might be used by other process during eviction, so to avoid confusion and allow synchronization, we add a lock to each supplemental page table entry.
+
+These three parts are ensured not to interact with other parts in terms of lock acquiring. So that we won't have the situation like holding one lock and acquire another lock, which means no deadlock.
+>>>>>>> 8410b9ab67fa6b5636dcfe11897f436227ba76b9
 
 #### A page fault in process P can cause another process Q's frame to be evicted.  How do you ensure that Q cannot access or modify the page during the eviction process?  How do you avoid a race between P evicting Q's frame and Q faulting the page back in?
 

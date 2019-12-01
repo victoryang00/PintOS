@@ -7,13 +7,9 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 
-/* The swap device. */
+
 static struct block *swap_device;
-
-/* Used swap pages. */
 static struct bitmap *swap_bitmap;
-
-/* Protects swap_bitmap. */
 static struct lock swap_lock;
 
 /* Number of sectors per page. */
@@ -43,10 +39,6 @@ void
 swap_in (struct page *p) 
 {
   size_t i;
-  
-  ASSERT (p->frame != NULL);
-  ASSERT (lock_held_by_current_thread (&p->frame->lock));
-  ASSERT (p->sector != (block_sector_t) -1);
 
   for (i = 0; i < PAGE_SECTORS; i++)
     block_read (swap_device, p->sector + i,
@@ -62,9 +54,6 @@ swap_out (struct page *p)
   size_t slot;
   size_t i;
 
-  ASSERT (p->frame != NULL);
-  ASSERT (lock_held_by_current_thread (&p->frame->lock));
-
   lock_acquire (&swap_lock);
   slot = bitmap_scan_and_flip (swap_bitmap, 0, 1, false);
   lock_release (&swap_lock);
@@ -73,13 +62,10 @@ swap_out (struct page *p)
 
   p->sector = slot * PAGE_SECTORS;
 
-  // Write out page sectors
-/* add code here */
-  /* OUR CODE */ 
+
   for(i = 0; i < PAGE_SECTORS; i++){
      block_write (swap_device, p->sector + i, p->frame->base + i * BLOCK_SECTOR_SIZE);
   } 
-  /* END OF OUR CODE*/
  
   p->private = false;
   p->file = NULL;

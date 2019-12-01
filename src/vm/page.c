@@ -50,14 +50,23 @@ page_for_addr (const void *address)
       if (e != NULL)
         return hash_entry (e, struct page, hash_elem);
 
+<<<<<<< HEAD
       /* No page.  Expand stack? */
       if(address >= PHYS_BASE - STACK_MAX){ //Are we bigger than the max size of the stack?
          if(address >= thread_current ()->user_esp - 32){ //Is the page fault area in the user addr space? If so, we can expand our stack!
 	    //Uh oh, we are too big we need to expand the stack
+=======
+      /* No page and expand stack */
+      if(address >= PHYS_BASE - STACK_MAX){
+         if(address >= thread_current ()->user_esp - 32){
+>>>>>>> 8410b9ab67fa6b5636dcfe11897f436227ba76b9
             return page_allocate ((void *) address, false);
-	 }
+	   }
       }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8410b9ab67fa6b5636dcfe11897f436227ba76b9
 
     }
   return NULL;
@@ -121,7 +130,6 @@ page_in (void *fault_addr)
       if (!do_page_in (p))
         return false;
     }
-  ASSERT (lock_held_by_current_thread (&p->frame->lock));
     
   /* Install frame into page table. */
   success = pagedir_set_page (thread_current ()->pagedir, p->addr,
@@ -141,20 +149,21 @@ page_out (struct page *p)
 {
   bool dirty;
   bool ok = false;
-
-  ASSERT (p->frame != NULL);
-  ASSERT (lock_held_by_current_thread (&p->frame->lock));
-
   /* Mark page not present in page table, forcing accesses by the
      process to fault.  This must happen before checking the
      dirty bit, to prevent a race with the process dirtying the
      page. */
+<<<<<<< HEAD
 
   pagedir_clear_page (p->thread->pagedir, p->addr); //Take the page out of the page table so that nothing can access it
 
   /* Has the frame been modified? */
   dirty = pagedir_is_dirty (p->thread->pagedir, p->addr); //Dirty is true if we changed the file!
 
+=======
+  pagedir_clear_page (p->thread->pagedir, p->addr); //Take the page out of the page table so that nothing can access it
+  dirty = pagedir_is_dirty (p->thread->pagedir, p->addr); //Dirty is true if we changed the file.
+>>>>>>> 8410b9ab67fa6b5636dcfe11897f436227ba76b9
   /* Write frame contents to disk if necessary. */
 
   if(p->file != NULL) { //If our page has a file
@@ -175,6 +184,10 @@ page_out (struct page *p)
   if (ok){ //If we can swap it out (or write to file) we want to remove the frame...if ok is false we won't want to remove it from RAM
      p->frame = NULL;
   }
+<<<<<<< HEAD
+=======
+
+>>>>>>> 8410b9ab67fa6b5636dcfe11897f436227ba76b9
   return ok;
 }
 
@@ -184,15 +197,9 @@ page_out (struct page *p)
 bool
 page_accessed_recently (struct page *p) 
 {
-  bool was_accessed;
-
-  ASSERT (p->frame != NULL);
-  ASSERT (lock_held_by_current_thread (&p->frame->lock));
-
-  was_accessed = pagedir_is_accessed (p->thread->pagedir, p->addr);
-  if (was_accessed)
+  if (pagedir_is_accessed (p->thread->pagedir, p->addr))
     pagedir_set_accessed (p->thread->pagedir, p->addr, false);
-  return was_accessed;
+  return pagedir_is_accessed (p->thread->pagedir, p->addr);
 }
 
 /* Adds a mapping for user virtual address VADDR to the page hash
@@ -222,7 +229,6 @@ page_allocate (void *vaddr, bool read_only)
 
       if (hash_insert (t->pages, &p->hash_elem) != NULL) 
         {
-          /* Already mapped. */
           free (p);
           p = NULL;
         }
@@ -236,7 +242,6 @@ void
 page_deallocate (void *vaddr) 
 {
   struct page *p = page_for_addr (vaddr);
-  ASSERT (p != NULL);
   frame_lock (p);
   if (p->frame)
     {
@@ -282,17 +287,15 @@ page_lock (const void *addr, bool will_write)
   frame_lock (p);
   if (p->frame == NULL)
     return (do_page_in (p)
-            && pagedir_set_page (thread_current ()->pagedir, p->addr,
-                                 p->frame->base, !p->read_only)); 
+            && pagedir_set_page (thread_current ()->pagedir, p->addr,p->frame->base, !p->read_only)); 
   else
     return true;
 }
 
 /* Unlocks a page locked with page_lock(). */
 void
-page_unlock (const void *addr) 
+page_unlock (const void *addr)
 {
   struct page *p = page_for_addr (addr);
-  ASSERT (p != NULL);
   frame_unlock (p->frame);
 }
