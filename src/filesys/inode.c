@@ -14,7 +14,9 @@
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
   {
-    block_sector_t start;               /* First data sector. */
+    block_sector_t start[100];          /* Pointers to sectors. Also act like indirect pointer. */
+    block_sector_t doubly_indirect;     /* Doubly indirect pointer. */
+    bool is_dir;                        /* If the inode belongs to the directory. */
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
     uint32_t unused[125];               /* Not used. */
@@ -37,6 +39,7 @@ struct inode
     bool removed;                       /* True if deleted, false otherwise. */
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
     struct inode_disk data;             /* Inode content. */
+    struct semaphore inode_lock;        /* Lock of the inode. */
   };
 
 /* Returns the block device sector that contains byte offset POS
@@ -47,10 +50,25 @@ static block_sector_t
 byte_to_sector (const struct inode *inode, off_t pos) 
 {
   ASSERT (inode != NULL);
-  if (pos < inode->data.length)
-    return inode->data.start + pos / BLOCK_SECTOR_SIZE;
-  else
+  sema_down(&inode->inode_lock);
+
+  /* invalid bytes */
+  if (pos > inode->data.length)
+  {
+    sema_up(&inode->inode_lock);
     return -1;
+  }
+
+  /* from direct pointer */
+  if (pos / BLOCK_SECTOR_SIZE < 100)
+  {
+    sema_up(&inode->inode_lock);
+    return inode->data.start[pos / BLOCK_SECTOR_SIZE];
+  }
+
+  /* from indirect pointer */
+  block_sector_t buffer[128];
+  /* TODO */
 }
 
 /* List of open inodes, so that opening a single inode twice
@@ -70,7 +88,7 @@ inode_init (void)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length)
+inode_create (block_sector_t sector, off_t length, bool is_dir)
 {
   struct inode_disk *disk_inode = NULL;
   bool success = false;
@@ -85,6 +103,12 @@ inode_create (block_sector_t sector, off_t length)
   if (disk_inode != NULL)
     {
       size_t sectors = bytes_to_sectors (length);
+
+      /* set up for the new stuff in disk_inode. */
+      memset (disk_inode->start, 0, 100 * sizeof(block_sector_t));
+      disk_inode->doubly_indirect = 0;
+      disk_inode->is_dir = is_dir;
+      
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
       if (free_map_allocate (sectors, &disk_inode->start)) 
