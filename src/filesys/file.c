@@ -2,14 +2,42 @@
 #include <debug.h>
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "filesys/directory.h"
 
-/* An open file. */
-struct file 
-  {
+
+struct file {
+    off_t position;                  /* Current position. */
+    bool is_denied_write;            /* Has file_deny_write() been called? */
     struct inode *inode;        /* File's inode. */
-    off_t pos;                  /* Current position. */
-    bool deny_write;            /* Has file_deny_write() been called? */
-  };
+};
+
+
+/* link the file in sector with the length of the bytes. 
+   if the inode is successfully created, return the inode, else return null.*/
+
+struct inode *
+file_create (block_sector_t sector, off_t length) 
+{
+  /* for test whether the inode is created. */
+  bool success = inode_create (sector, length, FILE_TYPE);
+  /* init the inode with NULL.*/
+  struct inode *inode = NULL;
+  if(success){
+    inode = inode_open (sector);
+    if (inode == NULL)
+      free_map_release_at (sector);
+  }
+
+  if (inode != NULL && length > 0
+      && inode_write_at (inode, "", 1, length - 1) != 1)
+    {
+      inode_remove (inode);
+      inode_close (inode);
+      inode = NULL;
+    }
+  return inode;
+}
+
 
 /* Opens a file for the given INODE, of which it takes ownership,
    and returns the new file.  Returns a null pointer if an
@@ -165,4 +193,19 @@ file_tell (struct file *file)
 {
   ASSERT (file != NULL);
   return file->pos;
+}
+
+bool is_really_file(struct file* file){
+  return file->inode->data.is_file==FILE_TYPE;
+}
+
+bool read_dir_by_file_node(struct file* file, char* name, int order){
+  if(is_really_file(file)){
+    return false;
+  }
+  return dir_readdir(dir_open(file->inode), name, order);
+}
+
+int get_inumber(struct file* file){
+  return file->inode->sector;
 }
