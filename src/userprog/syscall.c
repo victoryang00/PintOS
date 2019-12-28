@@ -361,5 +361,5 @@ void sys_INUMBER(struct intr_frame *f){
 }
 
 void sys_CACHE_FLUSH(struct intr_frame *f) {
-  f->eax = test_cache_flash();
+  f->eax = test_cache();
 }

@@ -34,13 +34,10 @@ void cache_init(void)
 
 
 /* called by process, return the cache_entry with the sector number SECTOR*/
-struct cache_entry *cache_get_block(block_sector_t sector,
-                                            bool dirty)
-{
+struct cache_entry *cache_get_block(block_sector_t sector, bool dirty){
   lock_acquire(&cache_lock);
   struct cache_entry *cache = get_block_in_cache(sector);
-  if (cache)
-  {
+  if (cache){
     cache->open_cnt++;
     cache->dirty |= dirty;
     cache->referebce_bit = true;
@@ -123,8 +120,7 @@ struct cache_entry *find_replace()
 /*
 scan the cache list, if the cache is dirty, write back to the disk
 if IS_REMOVE is true, remove all the cache.  */
-void cache_write_to_disk(bool is_remove)
-{
+void cache_write_to_disk(bool is_remove){
   // ASSERT(is_remove);
   lock_acquire(&cache_lock);
   struct list_elem *next, *e = list_begin(&filesys_cache);
@@ -158,7 +154,7 @@ void write_cache_back_loop(void *aux UNUSED)
 }
 
 /* Cache flash to disk, return the number of flash block*/
-int test_cache_flash(void) {
+int test_cache(void) {
   int count= 0;
   // count.
   lock_acquire(&cache_lock);
@@ -177,25 +173,3 @@ int test_cache_flash(void) {
   //make this not bothered by other operations.
   return count;
 }
-
-/* Return the number of dirty cache */
-int test_dirty_cache (void) {
-  int write_num = 0;
-
-  lock_acquire(&cache_lock);
-  
-  struct list_elem *next, *e = list_begin(&filesys_cache);
-  while (e != list_end(&filesys_cache))
-  {
-    next = list_next(e);
-    struct cache_entry *c = list_entry(e, struct cache_entry, elem);
-    if (c->dirty)
-    {
-      write_num ++;
-    }
-    e = next;
-  }
-  lock_release(&cache_lock);
-  return write_num;
-}
-

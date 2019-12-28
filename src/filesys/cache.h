@@ -42,7 +42,6 @@ void write_cache_back_loop (void *aux);
 void thread_func_read_ahead (void *aux);
 void spawn_thread_read_ahead (block_sector_t sector);
 
-int test_cache_flash (void);
-int test_dirty_cache (void);
+int test_cache (void);
 
 #endif /* filesys/cache.h */

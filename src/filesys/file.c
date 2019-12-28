@@ -5,20 +5,15 @@
 #include "filesys/directory.h"
 
 
-
-
-
 /* link the file in sector with the length of the bytes. 
    if the inode is successfully created, return the inode, else return null.*/
 
 struct inode *
 file_create (block_sector_t sector, off_t length) 
 {
-  /* for test whether the inode is created. */
-  bool success = inode_create (sector, length, FILE_TYPE);
   /* init the inode with NULL.*/
   struct inode *inode = NULL;
-  if(success){
+  if(inode_create (sector, length, FILE_TYPE)){
     inode = inode_open (sector);
     if (inode == NULL)
       free_map_release_at (sector);

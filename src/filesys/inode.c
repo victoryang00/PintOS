@@ -130,7 +130,7 @@ inode_create (block_sector_t sector, off_t length, uint32_t is_file)
 
   if (disk_inode != NULL)
   {
-    /* dealt with the disk inode with w
+    /* dealt with the disk inode with thread operation. */
     disk_inode->length = length;
     disk_inode->magic = INODE_MAGIC;
     disk_inode-> is_file = is_file;
