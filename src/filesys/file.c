@@ -62,7 +62,8 @@ file_open (struct inode *inode)
 struct file *
 file_reopen (struct file *file) 
 {
-  return file_open (inode_reopen (file->inode));
+  struct file* new_file=file_open (inode_reopen (file->inode));
+  return new_file;
 }
 
 /* Closes FILE. */

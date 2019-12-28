@@ -11,28 +11,26 @@
 
 struct list filesys_cache;                              /* cache list */
 uint32_t filesys_cache_size;                            /* current cache number of pintos */
-struct lock filesys_cache_lock;                         /* cache lock */                
+struct lock cache_lock;                         /* cache lock */                
 
 struct list_elem* head;                                 /* head pointer for clock */
 
 
-/** cache block
- * 
- * 
- * */
+/* cache block 
+cotains block array, block sector
+dirty ref_bit and open_cnt.*/
 struct cache_entry {
   uint8_t block[BLOCK_SECTOR_SIZE];                     /* actual data from disk 512 bytes*/
   block_sector_t sector;                                /* sector on disk where the data resides */
   bool dirty;                                           /* dirty flag, true if the data was changed */
   bool ref_bit;                                         /* reference bit for clock algorithm */
   int open_cnt;                                         /* current opened number */
-  struct list_elem elem;                                /* list element for filesys_cache */
+  struct list_elem elem;                                /* to take next the in-place element */
 };
 
-void filesys_cache_init (void);
-void filesys_cache_flush (void);
+void cache_init (void);
 struct cache_entry *get_block_in_cache (block_sector_t sector);
-struct cache_entry* filesys_cache_get_block (block_sector_t sector,
+struct cache_entry* cache_get_block (block_sector_t sector,
 					     bool dirty);
 struct cache_entry* cache_replace (block_sector_t sector, bool dirty);
 

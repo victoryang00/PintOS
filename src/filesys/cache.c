@@ -3,24 +3,6 @@
 #include "threads/malloc.h"
 #include "threads/thread.h"
 
-/* Initialize the cache , create a always-runnnin process
-   to write the dirty cache back every 5 TIME FREQUENCY
-*/
-void filesys_cache_init(void)
-{
-  list_init(&filesys_cache);
-  lock_init(&filesys_cache_lock);
-  filesys_cache_size = 0;
-  thread_create("filesys_cache_writeback", 0, write_cache_back_loop, NULL);
-}
-
-/**  
- * Flushes the cache to disk.
- * */
-void filesys_cache_flush(void) 
-{
-  filesys_cache_write_to_disk(true);
-}
 
 /* return the cache block with block sector is SECTOR 
    return null if not found in cache
@@ -40,19 +22,30 @@ struct cache_entry *get_block_in_cache(block_sector_t sector)
   }
   return NULL;
 }
+/* Initialize the cache , create a always-runnnin process
+   to write the dirty cache back every 5 TIME FREQUENCY
+*/
+void cache_init(void)
+{
+  lock_init(&cache_lock);
+  filesys_cache_size = 0; //frest init filesys cache size as zero.
+  list_init(&filesys_cache);
+  thread_create("filesys_cache_writeback", 0, write_cache_back_loop, NULL);
+}
+
 
 /* called by process, return the cache_entry with the sector number SECTOR*/
-struct cache_entry *filesys_cache_get_block(block_sector_t sector,
+struct cache_entry *cache_get_block(block_sector_t sector,
                                             bool dirty)
 {
-  lock_acquire(&filesys_cache_lock);
+  lock_acquire(&cache_lock);
   struct cache_entry *c = get_block_in_cache(sector);
   if (c)
   {
     c->open_cnt++;
     c->dirty |= dirty;
     c->ref_bit = true;
-    lock_release(&filesys_cache_lock);
+    lock_release(&cache_lock);
     return c;
   }
   c = cache_replace(sector, dirty);
@@ -60,7 +53,7 @@ struct cache_entry *filesys_cache_get_block(block_sector_t sector,
   {
     PANIC("Not enough memory for buffer cache.");
   }
-  lock_release(&filesys_cache_lock);
+  lock_release(&cache_lock);
   return c;
 }
 
@@ -102,7 +95,7 @@ struct cache_entry *cache_replace(block_sector_t sector,
 struct cache_entry *find_replace()
 {
   struct cache_entry *replace;
-  while (1)
+  while (true)
   {
     struct list_elem *e;
     for (e = list_begin(&filesys_cache); e != list_end(&filesys_cache);
@@ -134,7 +127,8 @@ struct cache_entry *find_replace()
  * */
 void filesys_cache_write_to_disk(bool is_remove)
 {
-  lock_acquire(&filesys_cache_lock);
+  // ASSERT(is_remove);
+  lock_acquire(&cache_lock);
   struct list_elem *next, *e = list_begin(&filesys_cache);
   while (e != list_end(&filesys_cache))
   {
@@ -152,10 +146,10 @@ void filesys_cache_write_to_disk(bool is_remove)
     }
     e = next;
   }
-  lock_release(&filesys_cache_lock);
+  lock_release(&cache_lock);
 }
 
-/* execute write back dirty cache every 5 time frequence*/
+/* execute write back dirty cache every 5 time in the sequnce. */
 void write_cache_back_loop(void *aux UNUSED)
 {
   while (true)
@@ -167,32 +161,30 @@ void write_cache_back_loop(void *aux UNUSED)
 
 /* Cache flash to disk, return the number of flash block*/
 int test_cache_flash(void) {
-  int write_num = 0;
-
-  lock_acquire(&filesys_cache_lock);
-  
-  struct list_elem *next, *e = list_begin(&filesys_cache);
-  while (e != list_end(&filesys_cache))
+  int count= 0;
+  // count.
+  lock_acquire(&cache_lock);
+  //in the cache flash, it's producer and consumer problem
+  for (struct list_elem *next, *e = list_begin(&filesys_cache);e != list_end(&filesys_cache);e=list_next(e))
   {
-    next = list_next(e);
     struct cache_entry *c = list_entry(e, struct cache_entry, elem);
     if (c->dirty)
     {
       block_write(fs_device, c->sector, &c->block);
       c->dirty = false;
-      write_num ++;
+      count++;
     }
-    e = next;
   }
-  lock_release(&filesys_cache_lock);
-  return write_num;
+  lock_release(&cache_lock);
+  //make this not bothered by other operations.
+  return count;
 }
 
 /* Return the number of dirty cache */
 int test_dirty_cache (void) {
-    int write_num = 0;
+  int write_num = 0;
 
-  lock_acquire(&filesys_cache_lock);
+  lock_acquire(&cache_lock);
   
   struct list_elem *next, *e = list_begin(&filesys_cache);
   while (e != list_end(&filesys_cache))
@@ -205,7 +197,7 @@ int test_dirty_cache (void) {
     }
     e = next;
   }
-  lock_release(&filesys_cache_lock);
+  lock_release(&cache_lock);
   return write_num;
 }
 

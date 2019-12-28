@@ -50,12 +50,10 @@ struct inode
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
     struct inode_disk data;             /* Inode content. */
 
-
     struct lock extend_lock;
     
     off_t length;                       /* File size in bytes. */
     off_t length_for_read; 
-
   };
 void inode_init (void);
 
