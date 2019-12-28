@@ -43,8 +43,7 @@ void
 filesys_done (void) 
 {
   // write back all cache t
-  filesys_cache_write_to_disk(true);
-  
+  cache_write_to_disk(true);
   free_map_close ();
 }
 

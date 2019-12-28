@@ -9,16 +9,15 @@
 */
 struct cache_entry *get_block_in_cache(block_sector_t sector)
 {
-  struct cache_entry *c;
+  struct cache_entry *cache;
   struct list_elem *e;
-  for (e = list_begin(&filesys_cache); e != list_end(&filesys_cache);
-       e = list_next(e))
-  {
-    c = list_entry(e, struct cache_entry, elem);
-    if (c->sector == sector)
-    {
-      return c;
+  e = list_begin(&filesys_cache);
+  while( e != list_end(&filesys_cache)) {
+    cache= list_entry(e, struct cache_entry, elem);
+    if (cache->sector == sector){
+      return cache;
     }
+    e = list_next(e);
   }
   return NULL;
 }
@@ -39,22 +38,22 @@ struct cache_entry *cache_get_block(block_sector_t sector,
                                             bool dirty)
 {
   lock_acquire(&cache_lock);
-  struct cache_entry *c = get_block_in_cache(sector);
-  if (c)
+  struct cache_entry *cache = get_block_in_cache(sector);
+  if (cache)
   {
-    c->open_cnt++;
-    c->dirty |= dirty;
-    c->ref_bit = true;
+    cache->open_cnt++;
+    cache->dirty |= dirty;
+    cache->referebce_bit = true;
     lock_release(&cache_lock);
-    return c;
+    return cache;
   }
-  c = cache_replace(sector, dirty);
-  if (!c)
+  cache = cache_replace(sector, dirty);
+  if (!cache)
   {
     PANIC("Not enough memory for buffer cache.");
   }
   lock_release(&cache_lock);
-  return c;
+  return cache;
 }
 
 /* Choose a cache block to be replaced, return the new cache block with
@@ -86,7 +85,7 @@ struct cache_entry *cache_replace(block_sector_t sector,
   c->sector = sector;
   block_read(fs_device, c->sector, &c->block);
   c->dirty = dirty;
-  c->ref_bit = true;
+  c->referebce_bit= true;
   return c;
 }
 
@@ -104,9 +103,9 @@ struct cache_entry *find_replace()
       replace = list_entry(e, struct cache_entry, elem);
       if (replace->open_cnt == 0)
       {
-        if (replace->ref_bit)
+        if (replace->referebce_bit)
         {
-          replace->ref_bit = false;
+          replace->referebce_bit= false;
         }
         else
         {
@@ -121,11 +120,10 @@ struct cache_entry *find_replace()
   }
 }
 
-/**
- * scan the cache list, if the cache is dirty, write back to the disk
- * if IS_REMOVE is true, remove all the cache. 
- * */
-void filesys_cache_write_to_disk(bool is_remove)
+/*
+scan the cache list, if the cache is dirty, write back to the disk
+if IS_REMOVE is true, remove all the cache.  */
+void cache_write_to_disk(bool is_remove)
 {
   // ASSERT(is_remove);
   lock_acquire(&cache_lock);
@@ -155,7 +153,7 @@ void write_cache_back_loop(void *aux UNUSED)
   while (true)
   {
     timer_sleep(WRITE_BACK_WAIT_TIME);
-    filesys_cache_write_to_disk(false);
+    cache_write_to_disk(false);
   }
 }
 

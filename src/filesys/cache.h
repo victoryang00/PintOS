@@ -18,12 +18,12 @@ struct list_elem* head;                                 /* head pointer for cloc
 
 /* cache block 
 cotains block array, block sector
-dirty ref_bit and open_cnt.*/
+dirty  and open_cnt.*/
 struct cache_entry {
   uint8_t block[BLOCK_SECTOR_SIZE];                     /* actual data from disk 512 bytes*/
   block_sector_t sector;                                /* sector on disk where the data resides */
   bool dirty;                                           /* dirty flag, true if the data was changed */
-  bool ref_bit;                                         /* reference bit for clock algorithm */
+  bool referebce_bit;                                   /* reference bit for clock algorithm */
   int open_cnt;                                         /* current opened number */
   struct list_elem elem;                                /* to take next the in-place element */
 };
@@ -37,7 +37,7 @@ struct cache_entry* cache_replace (block_sector_t sector, bool dirty);
 struct cache_entry *find_replace();
 
 
-void filesys_cache_write_to_disk (bool is_remove);
+void cache_write_to_disk (bool is_remove);
 void write_cache_back_loop (void *aux);
 void thread_func_read_ahead (void *aux);
 void spawn_thread_read_ahead (block_sector_t sector);

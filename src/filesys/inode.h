@@ -53,22 +53,22 @@ struct inode
     struct lock extend_lock;
     
     off_t length;                       /* File size in bytes. */
-    off_t length_for_read; 
+    off_t length_for_read;              /* Calculate the File size in bytes. */
   };
 void inode_init (void);
 
 struct node* inode_cache_create (block_sector_t sector, uint32_t is_file);
 bool inode_create (block_sector_t sector, off_t length, uint32_t is_file);
 
+off_t inode_read_at (struct inode *, void *, off_t size, off_t offset);
+off_t inode_write_at (struct inode *, const void *, off_t size, off_t offset);
+void inode_deny_write (struct inode *);
+void inode_allow_write (struct inode *);
 struct inode *inode_open (block_sector_t);
 struct inode *inode_reopen (struct inode *);
 block_sector_t inode_get_inumber (const struct inode *);
 void inode_close (struct inode *);
 void inode_remove (struct inode *);
-off_t inode_read_at (struct inode *, void *, off_t size, off_t offset);
-off_t inode_write_at (struct inode *, const void *, off_t size, off_t offset);
-void inode_deny_write (struct inode *);
-void inode_allow_write (struct inode *);
 off_t inode_length (const struct inode *);
 
 #endif /* filesys/inode.h */
