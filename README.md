@@ -321,4 +321,24 @@ Advantages: We use queue to select thread. Although it is called a multi-level q
 Disadvantages: Although the guide says that the priority test set does not conflict with the implementation of the mlfqs test set, in fact there is a call to lock in this part, so in order to be able to pass all, you need to modify the original lock operation.
 
 If we have enough time, we might write a queue struct together with list to raise the system performance rather than the general extendibility. Also, to make the code more elegant, we can just write multiple-used module into function.
+mv x86_64-linux-gnu-ar i686-linux-ar
+mv x86_64-linux-gnu-c++  i686-linux-c++ 
+mv x86_64-linux-gnu-c++filt  i686-linux-c++filt 
+mv x86_64-linux-gnu-addr2line i686-linux-addr2line
+mv x86_64-linux-gnu-cpp i686-linux-cpp
+mv x86_64-linux-gnu-elfedit   i686-linux-elfedit  
+mv x86_64-linux-gnu-g++ i686-linux-g++
+mv x86_64-linux-gnu-gcc i686-linux-gcc
+mv x86_64-linux-gnu-gcov i686-linux-gcov
+mv x86_64-linux-gnu-gprof i686-linux-gprof
+mv x86_64-linux-gnu-nm i686-linux-nm
+mv x86_64-linux-gnu-objdump  i686-linux-objdump 
+mv x86_64-linux-gnu-ld.bfd  i686-linux-ld.bfd 
+mv x86_64-linux-gnu-objcopy  i686-linux-objcopy 
+mv x86_64-linux-gnu-ranlib i686-linux-ranlib
+mv x86_64-linux-gnu-readelf i686-linux-readelf
+mv x86_64-linux-gnu-size  i686-linux-size 
+mv x86_64-linux-gnu-strip i686-linux-strip
+mv x86_64-linux-gnu-strings  i686-linux-strings 
 
+i686-linux-addr2line         x86_64-linux-gnu-gcc i686-linux-ar                x86_64-linux-gnu-gcc-9 i686-linux-as                x86_64-linux-gnu-gcc-ar i686-linux-c++               x86_64-linux-gnu-gcc-ar-9 i686-linux-c++filt           x86_64-linux-gnu-gcc-nm i686-linux-cpp               x86_64-linux-gnu-gcc-nm-9 i686-linux-elfedit           x86_64-linux-gnu-gcc-ranlib i686-linux-g++               x86_64-linux-gnu-gcc-ranlib-9 i686-linux-gcc               x86_64-linux-gnu-gcov i686-linux-gcc-4.6.x-google  x86_64-linux-gnu-gcov-9 i686-linux-gcov              x86_64-linux-gnu-gcov-dump i686-linux-gprof             x86_64-linux-gnu-gcov-dump-9 i686-linux-ld                x86_64-linux-gnu-gcov-tool i686-linux-ld.bfd            x86_64-linux-gnu-gcov-tool-9 i686-linux-nm                x86_64-linux-gnu-gold i686-linux-objcopy           x86_64-linux-gnu-gprof i686-linux-objdump           x86_64-linux-gnu-ld i686-linux-ranlib            x86_64-linux-gnu-ld.bfd i686-linux-readelf           x86_64-linux-gnu-ld.gold i686-linux-size              x86_64-linux-gnu-nm i686-linux-strings           x86_64-linux-gnu-objcopy i686-linux-strip

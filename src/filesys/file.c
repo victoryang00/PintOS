@@ -5,11 +5,7 @@
 #include "filesys/directory.h"
 
 
-struct file {
-    off_t position;                  /* Current position. */
-    bool is_denied_write;            /* Has file_deny_write() been called? */
-    struct inode *inode;        /* File's inode. */
-};
+
 
 
 /* link the file in sector with the length of the bytes. 

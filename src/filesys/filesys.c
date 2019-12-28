@@ -258,7 +258,7 @@ bool can_move(const char* name){
 
   struct file * file = filesys_open (name);
   if(file==NULL){
-    return false;  // file does not exist, so need not move
+    return false; 
   }else if(is_really_file(file)){
       file_close(file);
       return true; // we don't care about file
