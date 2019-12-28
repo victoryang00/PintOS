@@ -29,7 +29,6 @@ enum
     SYS_READDIR,                /* Reads a directory entry. */
     SYS_ISDIR,                  /* Tests if a fd represents a directory. */
     SYS_INUMBER,                 /* Returns the inode number for a fd. */
-
     SYS_CACHE_FLUSH             /* Returns if the cache needs flushing. */
   };
 

@@ -32,7 +32,7 @@ bytes_to_data_sectors (off_t size)
 }
 
 
-/* added by Lu*/
+/* Indirect sectors implementation */
 static size_t
 bytes_to_indirect_sectors(off_t size)
 {
@@ -81,11 +81,15 @@ byte_to_sector (const struct inode *inode, off_t pos)
     {
       uint32_t level_index;
       uint32_t level_table[PTRS_PER_SECTOR];
+
+
       // read the first level pointer table
       block_read(fs_device, inode->data.pointers[TOTAL_POINTER_NUM - 1],
                  &level_table);
       pos -= (DIRECT_POINTER_NUM + PTRS_PER_SECTOR) * BLOCK_SECTOR_SIZE;
       level_index = pos / (PTRS_PER_SECTOR * BLOCK_SECTOR_SIZE);
+
+
       // read the second level pointer table
       block_read(fs_device, level_table[level_index], &level_table);
       pos -= level_index * (PTRS_PER_SECTOR * BLOCK_SECTOR_SIZE);
@@ -115,17 +119,18 @@ bool
 inode_create (block_sector_t sector, off_t length, uint32_t is_file)
 {
   struct inode_disk *disk_inode = NULL;
+  /* init the inode_disk as NULL */
   bool success = false;
-
-  ASSERT (length >= 0 || length <= MAX_FILE_SIZE);
 
   /* If this assertion fails, the inode structure is not exactly
      one sector in size, and you should fix that. */
   ASSERT (sizeof *disk_inode == BLOCK_SECTOR_SIZE);
-
+  /* calloc is the best memory func for filesys, returns a*b */
   disk_inode = calloc (1, sizeof *disk_inode);
+
   if (disk_inode != NULL)
   {
+    /* dealt with the disk inode with w
     disk_inode->length = length;
     disk_inode->magic = INODE_MAGIC;
     disk_inode-> is_file = is_file;
@@ -175,7 +180,7 @@ inode_open (block_sector_t sector)
   inode->removed = false;
   block_read (fs_device, inode->sector, &inode->data);
   
-   /* added by Lu*/
+   /* for synchronization. */
   lock_init(&inode->extend_lock);
   block_read (fs_device, inode->sector, &inode->data);
   inode->length = inode->data.length;
