@@ -14,7 +14,7 @@ struct block *fs_device;
 
 static void do_format (void);
 
-/* add by hya: to change a file/dir name to coresponding inode */
+/* to change a file/dir name to coresponding inode */
 static struct inode * name_to_inode (const char *name);
 
 /* Initializes the file system module.
@@ -48,7 +48,7 @@ filesys_done (void)
   free_map_close ();
 }
 
-/* hya add: Extracts a file name part from *SRCP into PART,
+/* Extracts a file name part from *SRCP into PART,
    and updates *SRCP so that the next call will return the next
    file name part.
    Returns 1 if successful, 0 at end of string, -1 for a too-long
@@ -83,7 +83,7 @@ get_next_part (char part[NAME_MAX], const char **srcp)
   return 1;
 }
 
-/* hya add: parse the path and then open the last level directory in dirp, 
+/* parse the path and then open the last level directory in dirp, 
   the name of file/dir need to create is put in base_name.
 .*/
 static bool
@@ -159,7 +159,7 @@ parse_file_path (const char *name,
 }
 
 
-/* add by hya: parse path and create the file*/
+/* parse path and create the file*/
 bool
 filesys_create (const char *name, off_t initial_size) 
 {
@@ -189,7 +189,7 @@ filesys_create (const char *name, off_t initial_size)
   return success;
 }
 
-/* add by hya: parse path and create the dir */
+/* parse path and create the dir */
 bool
 filesys_dir_create (const char *name, off_t initial_size) 
 {
@@ -221,7 +221,7 @@ filesys_dir_create (const char *name, off_t initial_size)
 }
 
 
-/* modified by hya:, Opens the file with the given NAME.
+/* Opens the file with the given NAME.
    Returns the new file if successful or a null pointer
    otherwise.
    Fails if no file named NAME exists, in parse_file_path check if upper level directory exist. */
@@ -252,7 +252,7 @@ filesys_open (const char *name)
     }
 }
 
-/* hya add: test if it is can move, usually test dirctory, I treat dirctory as filer, 
+/*  test if it is can move, usually test dirctory, I treat dirctory as filer, 
 since it is also inode*/
 bool can_move(const char* name){
 
@@ -296,7 +296,7 @@ filesys_remove (const char *name)
   return success;
 }
 
-/* modified by hya: Formats the file system. */
+/* Formats the file system. */
 static void
 do_format (void)
 {
@@ -313,7 +313,7 @@ do_format (void)
   printf ("done.\n");
 }
 
-/* add by hya: Change current directory to the given path.
+/* Change current directory to the given path.
    Return true if successful, otherwise false. */
 bool
 filesys_chdir (const char *name) 
@@ -330,7 +330,7 @@ filesys_chdir (const char *name)
 }
 
 
-/* add by hya:  Resolves relative or absolute file NAME to an inode.
+/* Resolves relative or absolute file NAME to an inode.
    Returns an inode if successful, otherwise a null pointer.*/
 static struct inode *
 name_to_inode (const char *name)
