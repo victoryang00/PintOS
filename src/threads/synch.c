@@ -147,7 +147,6 @@ sema_self_test (void)
   thread_create ("sema-test", PRI_DEFAULT, sema_test_helper, &sema);
   for (i = 0; i < 10; i++) 
     {
-      // printf ("a semaphores...");
       sema_up (&sema[0]);
       sema_down (&sema[1]);
     }
@@ -211,6 +210,7 @@ lock_acquire (struct lock *lock)
 
   struct thread *cur_t;
   enum intr_level old_level;
+  /* for preventing the bug, disable intr here.*/
   old_level = intr_disable();
   while (lock->holder != NULL) 
     {
@@ -228,7 +228,7 @@ lock_acquire (struct lock *lock)
   list_push_back(&cur_t->locks,&lock->elem);
   if(thread_mlfqs==false)
   {
-    if(lock->priority > cur_t->locks_priority)
+    if(lock->priority > cur_t->locks_priority && cur_t->locks_priority!= -1 )
       cur_t->locks_priority = lock->priority;
     if(lock->priority > cur_t->priority)
       cur_t->priority = lock->priority;
@@ -297,6 +297,7 @@ lock_release (struct lock *lock)
   list_remove(&lock->elem);
   if(thread_mlfqs==false)
     thread_update_priority(thread_current());
+ /* iterate the rest of the lock list*/
   if(!list_empty(&lock->waiters))
   {
     e = list_max(&lock->waiters,&thread_less_priority,NULL);

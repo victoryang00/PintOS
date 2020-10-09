@@ -693,10 +693,11 @@ thread_priority_donate_nest(struct thread *t)
     else
       break;                                              //if not, break.
     t = l->holder;                                        //get the lock thread.
+    if (t->locks_priority!=-1){
     if(l->priority > t->locks_priority)                   //determine whether the currnet lock has the priority to raise the occupied thread's priority.
       t->locks_priority = l->priority;                    //if yes, donate to occupied thread.
     else
-      break;                                              //if not, break.
+      break;}                                             //if not, break.
     if(l->priority > t->priority)                         //for robustness.
       t->priority = l->priority;
     else
@@ -711,7 +712,7 @@ void
 thread_update_priority(struct thread *t)
 {
   t->locks_priority = PRI_UNVALID;
-
+  // printf("sb1");
   struct lock *l;
   struct list_elem *e;
   e = list_begin (&t->locks);
@@ -745,7 +746,7 @@ lock_update_priority(struct lock *l)
       t = list_entry(e, struct thread, elem);
       if(t->priority > l->priority)
         l->priority = t->priority;                             //get top priority.
-      e = list_begin (&l->waiters);
+      e = list_next (e);
     }
 }
 

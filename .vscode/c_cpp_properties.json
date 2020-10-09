@@ -1,0 +1,17 @@
+{
+    "configurations": [
+      {
+        "name": "Linux",
+        "includePath": ["/home/pintos/pintos-team-20/src",
+            "/home/pintos/pintos-team-20/src/lib",
+            "/home/pintos/pintos-team-20/src/lib/kernel"],
+        "defines": [],
+        "compilerPath": "/usr/bin/gcc",
+        "cStandard": "c11",
+        "cppStandard": "c++17",
+        "intelliSenseMode": "clang-x64"
+      }
+    ],
+    "version": 4
+  }
+  
