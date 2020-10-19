@@ -1,8 +1,8 @@
 # CS130 Project 2: User Program
 
-## Group 20 Members
+## Group 43 Members
 
-- Yuqing Yao yaoyq@shanghaitech.edu.cn
+- Cangli Yao yaocl@shanghaitech.edu.cn
 - Yiwei Yang yangyw@shanghaitech.edu.cn
 
 ## Task 1: Argument Passing
