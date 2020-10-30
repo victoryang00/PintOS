@@ -197,33 +197,33 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  // struct thread *cur_t;
-  // enum intr_level old_level;
-  // /* for preventing the bug, disable intr here.*/
-  // old_level = intr_disable();
-  // while (lock->holder != NULL) 
-  //   {
-  //     cur_t = thread_current();
-  //     list_push_back (&lock->waiters, &cur_t->elem);
-  //     cur_t->lock_waiting = lock;
-  //     if(thread_mlfqs==false)
-  //       thread_priority_donate_nest(cur_t);
-  //     thread_block ();
-  //   }
+  if (lock==NULL){
+      struct thread *cur_t;
+      enum intr_level old_level;
+      /* for preventing the bug, disable intr here.*/
+      old_level = intr_disable();
+      while (lock->holder != NULL) {
+          cur_t = thread_current();
+          list_push_back(&lock->waiters, &cur_t->elem);
+          cur_t->lock_waiting = lock;
+          if (thread_mlfqs == false)
+              thread_priority_donate_nest(cur_t);
+          thread_block();
+      }
 
-  // cur_t = thread_current();
-  // lock->holder = cur_t;
-  // cur_t->lock_waiting = NULL;
-  // list_push_back(&cur_t->locks,&lock->elem);
-  // if(thread_mlfqs==false)
-  // {
-  //   if(lock->priority > cur_t->locks_priority && cur_t->locks_priority!= -1 )
-  //     cur_t->locks_priority = lock->priority;
-  //   if(lock->priority > cur_t->priority)
-  //     cur_t->priority = lock->priority;
-  // }
-  // intr_set_level (old_level);
-  sema_down(&lock->semaphore);
+      cur_t = thread_current();
+      lock->holder = cur_t;
+      cur_t->lock_waiting = NULL;
+      list_push_back(&cur_t->locks, &lock->elem);
+      if (thread_mlfqs == false) {
+          if (lock->priority > cur_t->locks_priority && cur_t->locks_priority != -1)
+              cur_t->locks_priority = lock->priority;
+          if (lock->priority > cur_t->priority)
+              cur_t->priority = lock->priority;
+      }
+      intr_set_level(old_level);
+  } else
+      sema_down(&lock->semaphore);
   lock->holder = thread_current();
 }
 
@@ -237,34 +237,33 @@ lock_acquire (struct lock *lock)
 bool
 lock_try_acquire (struct lock *lock)
 {
-  bool success;
+    bool success = 0;
 
-  ASSERT (lock != NULL);
-  ASSERT (!lock_held_by_current_thread (lock));
+    ASSERT(lock != NULL);
+    ASSERT(!lock_held_by_current_thread(lock));
 
-  // struct thread *cur_t;
-  // enum intr_level old_level;
+    if (lock == NULL) {
+        struct thread *cur_t;
+        enum intr_level old_level;
 
-  // old_level = intr_disable ();
-  // if (lock->holder == NULL)
-  //   {
-  //     cur_t = thread_current();
-  //     lock->holder = cur_t;
-  //     cur_t->lock_waiting = NULL;
-  //     list_push_back(&cur_t->locks,&lock->elem);
-  //     if(thread_mlfqs==false)
-  //     {
-  //       if(lock->priority > cur_t->locks_priority)
-  //         cur_t->locks_priority = lock->priority;
-  //       if(lock->priority > cur_t->priority)
-  //         cur_t->priority = lock->priority;
-  //     }
-  //     success = true; 
-  //   }
-  // else
-  //   success = false;
-  // intr_set_level (old_level);
-  success = sema_try_down(&lock->semaphore);
+        old_level = intr_disable();
+        if (lock->holder == NULL) {
+            cur_t = thread_current();
+            lock->holder = cur_t;
+            cur_t->lock_waiting = NULL;
+            list_push_back(&cur_t->locks, &lock->elem);
+            if (thread_mlfqs == false) {
+                if (lock->priority > cur_t->locks_priority)
+                    cur_t->locks_priority = lock->priority;
+                if (lock->priority > cur_t->priority)
+                    cur_t->priority = lock->priority;
+            }
+            success = true;
+        } else
+            success = false;
+        intr_set_level(old_level);
+  } else
+      success = sema_try_down(&lock->semaphore);
   if (success)
       lock->holder = thread_current();
   return success;
@@ -344,7 +343,7 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
 
   sema_init (&waiter.semaphore, 0);
-  list_push_back (&cond->waiters, &waiter.elem);
+  list_insert (list_end (&cond->waiters), &waiter.elem);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);

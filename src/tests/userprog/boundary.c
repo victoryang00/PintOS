@@ -30,7 +30,7 @@ copy_string_across_boundary (const char *src)
 {
   char *p = get_boundary_area ();
   p -= strlen (src) < 4096 ? strlen (src) / 2 : 4096;
-  strlcpy (p, src, 4096);
+  strlcat (p, src, 4096);
   return p;
 }
 

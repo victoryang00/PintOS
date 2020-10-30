@@ -487,7 +487,7 @@ init_thread (struct thread *t, const char *name, int priority)
 
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
-  strlcpy (t->name, name, sizeof t->name);
+  strlcat (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
 
@@ -497,6 +497,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
   
   /* User Process. */
+  t->awaited=false;
   t->elffile=NULL;
   sema_init(&t->wsem,0);
   sema_init(&t->ltem,0);

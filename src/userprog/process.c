@@ -35,14 +35,16 @@ process_execute (const char *file_name)
     char *thread_name;
     tid_t tid;
     struct thread* child = NULL;
+
+    int filesys_size=strlen(file_name)+1;
     /* Make a copy of FILE_NAME.
        Otherwise there's a race between the caller and load(). */
     fn_copy = malloc(strlen(file_name)+1);
     if (fn_copy == NULL)
         return TID_ERROR;
-    strlcpy (fn_copy, file_name, strlen(file_name)+1);
-    thread_name = malloc(strlen(file_name)+1);
-    strlcpy (thread_name, file_name, strlen(file_name)+1);
+    strlcat (fn_copy, file_name, filesys_size);
+    thread_name = malloc(filesys_size);
+    strlcat (thread_name, file_name, filesys_size);
     cmd = strtok_r (thread_name," ",&save_ptr);  // get the thread name
 
     /* To seperate the command name from its arguments. */
@@ -141,6 +143,7 @@ process_wait (tid_t child_tid) {
         struct thread, childelem);
         if (child->tid == child_tid) {
             sema_down(&child->wsem);
+            child->awaited=true;
             break;
         }
     }
@@ -171,9 +174,9 @@ process_exit (void)
 
     uint32_t *pd;
 
-    /*  If it holds the filesys_lock, release it.*/
-    if(lock_held_by_current_thread(&filesys_lock)){
-        lock_release(&filesys_lock);
+    /*  If it holds the fl, release it.*/
+    if(lock_held_by_current_thread(&fl)){
+        lock_release(&fl);
     }
 
     /* print out the exit status . */
@@ -185,8 +188,8 @@ process_exit (void)
 
     /* If its parent is waiting for it. Wake up the parent process. */
     sema_up(&cur->wsem);
-
-    lock_acquire(&filesys_lock);
+    cur->awaited=false;
+    lock_acquire(&fl);
     /* close the executable file. */
     if(cur->elffile !=NULL) {
         file_close(cur->elffile);
@@ -198,7 +201,7 @@ process_exit (void)
             file_close(cur->file_desc.file[i]);
     }
 
-    lock_release(&filesys_lock);
+    lock_release(&fl);
 
 
     for (e = list_begin (&cur->child_list); e != list_end (&cur->child_list);
@@ -309,7 +312,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp,const char *args);
+static bool setup_stack (void **esp, char *args);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -335,9 +338,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
     process_activate ();
 
     /* Open executable file. */
-    lock_acquire (&filesys_lock);
+    lock_acquire (&fl);
     file = filesys_open (t->name);
-    lock_release (&filesys_lock);
+    lock_release (&fl);
     if (file == NULL)
     {
         printf ("load: %s: open failed\n", file_name);
@@ -550,82 +553,92 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp,const char* file_name)
+setup_stack (void **esp, char *args) 
 {
-    uint8_t *kpage;
-    bool success = false;
-    char *token, *save, *fn_copy;
-    /* assume maximum argc = 50 */
-    char **tokens[50];
-    int i = 0;
-    int tokensLen = 0;
-    char *espChar;
-    /*create a copy.*/
-    fn_copy = malloc(strlen(file_name)+1);
-    if(fn_copy ==NULL) return TID_ERROR;
-    strlcpy(fn_copy,file_name,strlen(file_name)+1);
-    /* Split the  string  of form([command name]  [arg1] [arg2] [arg3] ... ) */
-    for(token = strtok_r(fn_copy," ",&save); token!=NULL; token = strtok_r(NULL," ",&save))
-    {
-        tokens[i] = token;
-        i++;
-    }
+  uint8_t *kpage;
+  bool success = false;
 
+  char *token;
+  char *save;
+  char *fn_copy;
 
-    kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-    if (kpage != NULL)
+  /* First assume the args is no bigger than 50 */
+ char **tokens[100];
+ int count = 0;
+ int lens=0;
+ char *espChar;
+ int filesys_size=strlen(args)+1;
+ /* Get the copy for future use. */
+ fn_copy = malloc(filesys_size);
+ if(!fn_copy) return TID_ERROR;
+
+ strlcpy(fn_copy, args, filesys_size);
+ /* split the string of the args */
+ token = strtok_r(fn_copy, " ", &save);
+ while (token) {
+     tokens[count] = token;
+     count += 2;
+     token = strtok_r(NULL," ",&save);
+ }
+
+    kpage = palloc_get_page (6);
+    while (kpage != NULL)
     {
         success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-        if (success) {
+        while (success) {
             *esp = PHYS_BASE;
             espChar = (char *) *esp;
             /* push arguments onto the stack */
-            int j ;
+            int j= count-2;
             int length;
-            for (j = i-1; j >= 0; j--) {
+            while (j >= 0) {
                 length = strlen(tokens[j]) + 1;
-                tokensLen += length;
+                lens += length;
                 espChar -= length;
                 strlcpy(espChar, tokens[j], length);
                 tokens[j] = espChar;
+                j-=2;
             }
 
             /* word align */
-            tokensLen =  tokensLen % 4;
-            for (tokensLen;tokensLen>0; tokensLen--) {
+            lens =  (lens % 4)*2;
+            while (lens>0) {
                 espChar--;
                 *espChar = (uint8_t)0;
+                lens-=2;
             }
 
             espChar -= 4;
             *espChar = 0;
 
             /* add pointers to arguments to the stack */
-
-            for (j = i; j > 0; j--) {
+            j = count;
+            while (j > 0) {
                 espChar -= 4;
-                *((int *)espChar) = (void *)tokens[j-1];
+                *((int *)espChar) = (void *)tokens[j-2];
+                j-=2;
             }
 
             /* put argv onto the stack */
-
             espChar -= 4;
             *((int *)espChar) = (void*) espChar+4;
             /* put argc onto the stack */
             espChar -= 4;
-            *espChar = i;
+            *espChar = count/2;
             espChar -= 4;
             *espChar = 0;
             /* move esp to bottom of stack */
             *esp = espChar;
             free(fn_copy);
-        }
-        else
-            palloc_free_page (kpage);
+            break;
+        } 
+        if (!success)palloc_free_page (kpage);
+        break;
     }
 
     return success;
 }
+
 
 /* Adds a mapping from user virtual address UPAGE to kernel
    virtual address KPAGE to the page table.

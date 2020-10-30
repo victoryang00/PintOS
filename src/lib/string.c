@@ -361,7 +361,7 @@ strlcat (char *dst, const char *src, size_t size)
   ASSERT (src != NULL);
 
   src_len = strlen (src);
-  dst_len = strlen (dst);
+  dst_len = 0;
   if (size > 0 && dst_len < size) 
     {
       size_t copy_cnt = size - dst_len - 1;

@@ -6,6 +6,6 @@ void syscall_init (void);
 
 typedef int pid_t;
 struct openfile* getFile(int);
-struct lock filesys_lock;
+struct lock fl;
 
 #endif /* userprog/syscall.h */
