@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "filesys/file.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -192,10 +193,12 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  struct thread *cur_t = thread_current();
-  t->nice = cur_t->nice;                    //set up a new nice that should give its way to its father.
-  t->recent_cpu = cur_t->recent_cpu;        //the same as above.
   tid = t->tid = allocate_tid ();
+
+  /* Prepare thread for first run by initializing its stack.
+     Do this atomically so intermediate values for the 'stack'
+     member cannot be observed. */
+  old_level = intr_disable();
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -212,11 +215,10 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  intr_set_level (old_level);
+
   /* Add to run queue. */
   thread_unblock (t);
-
-  if(priority > thread_current()->priority)
-    thread_yield();
 
   return tid;
 }
@@ -352,18 +354,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  struct thread *t;
-  enum intr_level old_level;
-
-  old_level = intr_disable();
-  t = thread_current();
-  t->base_priority = new_priority;
-  if(t->base_priority > t->locks_priority)
-    t->priority = t->base_priority;
-  else
-    t->priority = t->locks_priority;
-  thread_yield();
-  intr_set_level(old_level);
+  thread_current ()->priority = new_priority;
 }
 
 /* Returns the current thread's priority. */
@@ -375,7 +366,7 @@ thread_get_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice) 
+thread_set_nice (int nice UNUSED) 
 {
   struct thread *t = thread_current();
   t->nice = nice;
@@ -484,6 +475,7 @@ is_thread (struct thread *t)
   return t != NULL && t->magic == THREAD_MAGIC;
 }
 
+
 /* Does basic initialization of T as a blocked thread named
    NAME. */
 static void
@@ -499,16 +491,26 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
 
-  t->lock_waiting=NULL;
-  list_init(&t->locks);
-  t->locks_priority=PRI_UNVALID;
-  t->base_priority=priority;
-
   t->nice = 0;            //set the origin to 0
   t->recent_cpu = 0;      //set the origin to 0
 
   t->magic = THREAD_MAGIC;
-  list_push_back (&all_list, &t->allelem);
+  
+  /* User Process. */
+  t->elffile=NULL;
+  sema_init(&t->wsem,0);
+  sema_init(&t->ltem,0);
+  sema_init(&t->tsem,0);
+
+  list_init(&t->child_list);
+  
+  for (int i = 0; i < 128; i++) {
+      t->file_desc.file[i] = NULL;
+      t->file_desc.fd = i;
+  }
+  t->ret_status = -1;
+  t->load_status = 1;
+  list_push_back(&all_list,&t->allelem);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -532,15 +534,13 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  struct list_elem *e;
-  if (list_empty (&ready_list))
-    return idle_thread;
-  else
-  {
-    e=list_max (&ready_list,&thread_less_priority,NULL);  //find the first top priority in the thread from back to front
-    list_remove(e);                                       //delete from the ready thread list
-    return list_entry (e, struct thread, elem);
-  }
+    if (list_empty(&ready_list)) {
+        return idle_thread;
+    } else {
+        struct list_elem *front = list_front(&ready_list);
+        list_remove(front);
+        return list_entry(front, struct thread, elem);
+    }
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -610,6 +610,20 @@ schedule (void)
   if (cur != next)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
+}
+
+/* Returns a tid to use for a new thread. */
+struct thread*
+find_thread_id(tid_t id) {
+    struct list_elem *e;
+    e = list_begin(&all_list);
+    while (e != list_end(&all_list)) {
+        struct thread *t = list_entry(e, struct thread, allelem);
+        if (t->tid == id)
+            return t;
+        e = list_next(e);
+    }
+    return NULL;
 }
 
 /* Returns a tid to use for a new thread. */

@@ -4,7 +4,8 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#define THREAD_SLEEP THREAD_BLOCKED
+#include "threads/synch.h"
+#include "filesys/file.h"
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -94,6 +95,24 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+
+    /* For Userporg, just need code file. */
+    struct file *elffile;               /* Exec File */
+    struct file_desc {
+        struct file *file[128];         /* all the exec file */
+        int fd;                         /* file descriptor */;
+    }file_desc;
+    
+    /* For the process status */
+    int ret_status; /* The return status code. */
+    int load_status; /* The load status code. */
+    bool awaited; /* waited status */
+    struct list child_list; /* List element for children processes list. */
+    struct list_elem childelem;         /* List element for children processes list. */
+    struct list fd_list; /* List of opened file. */
+    struct semaphore ltem,tsem,wsem; /* The semaphore used to notify the parent process whether the child process is loaded successfully. */
+
+    /* Deprecated */
     struct list_elem slpelem;           /* the element in sleep_list. */
     int64_t sleep_ticks;                /* the time to wait */
     struct lock *lock_waiting;          /* locks still waiting. */
@@ -148,6 +167,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+struct thread* find_thread_id(tid_t id);
 void thread_sleep(int64_t ticks);
 void thread_foreach_sleep (void);
 bool thread_less_priority(const struct list_elem *compare1,const struct list_elem *compare2,void *aux UNUSED);

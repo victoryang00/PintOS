@@ -24,6 +24,7 @@ struct lock
     struct list waiters;                              //the wait list 
     int priority;                                     //get the current priority
     struct list_elem elem;                            //list element in struct thread
+    struct semaphore semaphore;                       /* Binary semaphore controlling access. */
   };
 
 void lock_init (struct lock *);
@@ -35,7 +36,8 @@ bool lock_held_by_current_thread (const struct lock *);
 /* Condition variable. */
 struct condition 
   {
-    struct semaphore sema;        /* List of waiting threads. */
+
+    struct list waiters;        /* List of waiting threads. */
   };
 
 void cond_init (struct condition *);

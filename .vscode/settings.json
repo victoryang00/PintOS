@@ -1,6 +1,11 @@
 {
     "files.associations": {
         "list.h": "c",
-        "palloc.h": "c"
+        "palloc.h": "c",
+        "thread": "c",
+        "array": "c",
+        "deque": "c",
+        "vector": "c",
+        "string_view": "c"
     }
 }

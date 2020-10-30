@@ -108,26 +108,15 @@ sema_try_down (struct semaphore *sema)
 void
 sema_up (struct semaphore *sema) 
 {
-  struct list_elem *e;
-  struct thread *t;
   enum intr_level old_level;
 
   ASSERT (sema != NULL);
 
-  old_level = intr_disable ();            //very fancy step.
-  if (!list_empty (&sema->waiters))       //it the wait list is not empty, choose the top priority thread to put into the ready list
-  {
-    e = list_max(&sema->waiters, &thread_less_priority, NULL);
-    list_remove(e);
-    t = list_entry(e, struct thread, elem);
-    //can be 't = list_entry(list_pop_front(&sema->waiters), struct thread, element);'
-    thread_unblock(t);
-
-  }
-  sema->value++;
+  old_level = intr_disable();
+  if (!list_empty(&sema->waiters))
+      thread_unblock(list_entry(list_pop_front(&sema->waiters), struct thread, elem));
+  sema->value+=1;
   intr_set_level (old_level);
-if(t != NULL && thread_current()->priority < t->priority)
-  thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
@@ -188,8 +177,8 @@ lock_init (struct lock *lock)
   ASSERT (lock != NULL);
 
   lock->holder = NULL;
-  list_init (&lock->waiters);
-  lock->priority=PRI_UNVALID;
+
+  sema_init (&lock->semaphore, 1);
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -208,32 +197,34 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  struct thread *cur_t;
-  enum intr_level old_level;
-  /* for preventing the bug, disable intr here.*/
-  old_level = intr_disable();
-  while (lock->holder != NULL) 
-    {
-      cur_t = thread_current();
-      list_push_back (&lock->waiters, &cur_t->elem);
-      cur_t->lock_waiting = lock;
-      if(thread_mlfqs==false)
-        thread_priority_donate_nest(cur_t);
-      thread_block ();
-    }
+  // struct thread *cur_t;
+  // enum intr_level old_level;
+  // /* for preventing the bug, disable intr here.*/
+  // old_level = intr_disable();
+  // while (lock->holder != NULL) 
+  //   {
+  //     cur_t = thread_current();
+  //     list_push_back (&lock->waiters, &cur_t->elem);
+  //     cur_t->lock_waiting = lock;
+  //     if(thread_mlfqs==false)
+  //       thread_priority_donate_nest(cur_t);
+  //     thread_block ();
+  //   }
 
-  cur_t = thread_current();
-  lock->holder = cur_t;
-  cur_t->lock_waiting = NULL;
-  list_push_back(&cur_t->locks,&lock->elem);
-  if(thread_mlfqs==false)
-  {
-    if(lock->priority > cur_t->locks_priority && cur_t->locks_priority!= -1 )
-      cur_t->locks_priority = lock->priority;
-    if(lock->priority > cur_t->priority)
-      cur_t->priority = lock->priority;
-  }
-  intr_set_level (old_level);
+  // cur_t = thread_current();
+  // lock->holder = cur_t;
+  // cur_t->lock_waiting = NULL;
+  // list_push_back(&cur_t->locks,&lock->elem);
+  // if(thread_mlfqs==false)
+  // {
+  //   if(lock->priority > cur_t->locks_priority && cur_t->locks_priority!= -1 )
+  //     cur_t->locks_priority = lock->priority;
+  //   if(lock->priority > cur_t->priority)
+  //     cur_t->priority = lock->priority;
+  // }
+  // intr_set_level (old_level);
+  sema_down(&lock->semaphore);
+  lock->holder = thread_current();
 }
 
 
@@ -251,29 +242,31 @@ lock_try_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!lock_held_by_current_thread (lock));
 
-  struct thread *cur_t;
-  enum intr_level old_level;
+  // struct thread *cur_t;
+  // enum intr_level old_level;
 
-  old_level = intr_disable ();
-  if (lock->holder == NULL)
-    {
-      cur_t = thread_current();
-      lock->holder = cur_t;
-      cur_t->lock_waiting = NULL;
-      list_push_back(&cur_t->locks,&lock->elem);
-      if(thread_mlfqs==false)
-      {
-        if(lock->priority > cur_t->locks_priority)
-          cur_t->locks_priority = lock->priority;
-        if(lock->priority > cur_t->priority)
-          cur_t->priority = lock->priority;
-      }
-      success = true; 
-    }
-  else
-    success = false;
-  intr_set_level (old_level);
-
+  // old_level = intr_disable ();
+  // if (lock->holder == NULL)
+  //   {
+  //     cur_t = thread_current();
+  //     lock->holder = cur_t;
+  //     cur_t->lock_waiting = NULL;
+  //     list_push_back(&cur_t->locks,&lock->elem);
+  //     if(thread_mlfqs==false)
+  //     {
+  //       if(lock->priority > cur_t->locks_priority)
+  //         cur_t->locks_priority = lock->priority;
+  //       if(lock->priority > cur_t->priority)
+  //         cur_t->priority = lock->priority;
+  //     }
+  //     success = true; 
+  //   }
+  // else
+  //   success = false;
+  // intr_set_level (old_level);
+  success = sema_try_down(&lock->semaphore);
+  if (success)
+      lock->holder = thread_current();
   return success;
 }
 
@@ -336,7 +329,7 @@ cond_init (struct condition *cond)
 {
   ASSERT (cond != NULL);
 
-  sema_init(&cond->sema,0);
+  list_init (&cond->waiters);
 }
 
 /* Atomically releases LOCK and waits for COND to be signaled by
@@ -362,14 +355,16 @@ cond_init (struct condition *cond)
 void
 cond_wait (struct condition *cond, struct lock *lock) 
 {
-
+  struct semaphore_elem waiter;
   ASSERT (cond != NULL);
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
+  sema_init (&waiter.semaphore, 0);
+  list_push_back (&cond->waiters, &waiter.elem);
   lock_release (lock);
-  sema_down (&cond->sema);
+  sema_down (&waiter.semaphore);
   lock_acquire (lock);
 }
 
@@ -389,8 +384,12 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  if (!list_empty (&cond->sema.waiters)) 
-    sema_up(&cond->sema);
+  if (!list_empty (&cond->waiters)) {
+      struct list_elem *front = list_front(&cond->waiters);
+      list_remove(&cond->waiters);
+
+      sema_up(&list_entry(front, struct semaphore_elem, elem)->semaphore);
+  }
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -405,6 +404,6 @@ cond_broadcast (struct condition *cond, struct lock *lock)
   ASSERT (cond != NULL);
   ASSERT (lock != NULL);
 
-  while (!list_empty (&cond->sema.waiters))
+  while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
 }

@@ -89,12 +89,12 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  // int64_t start = timer_ticks ();
-  if(ticks<=0)return;//ticks should not <= 0. For robustness
-  // ASSERT (intr_get_level () == INTR_ON);
-  thread_sleep(ticks);//realized in thread_sleep, so that thread can update its state and add schedule function.
-  // while (timer_elapsed (start) < ticks) 
-    // thread_yield ();
+    int64_t start = timer_ticks();
+    if(ticks<=0)return;//ticks should not <= 0. For robustness
+
+    ASSERT(intr_get_level() == INTR_ON);
+    while (timer_elapsed(start) < ticks)
+        thread_yield();
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -173,19 +173,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   
-  if(thread_mlfqs)
-  {
-    thread_increase_recent_cpu();             //update every tick.
-    if(ticks % TIMER_FREQ == 0)               //update every second.
-    {
-      thread_recalculate_load_avg();
-      thread_foreach(&thread_recalculate_recent_cpu,NULL);
-    }
-    if(ticks %4 == 0)                         //update every 4 ticks.
-      thread_foreach(&thread_recalculate_priority,NULL);
-  }
-
-  thread_foreach_sleep();
   thread_tick ();
 }
 
