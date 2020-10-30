@@ -1,21 +1,23 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
-#include <stdint.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
-#include "threads/thread.h"
-#include "devices/input.h"
-#include "threads/vaddr.h"
-#include "threads/palloc.h"
-#include "userprog/pagedir.h"
-#include "userprog/process.h"
-#include "devices/shutdown.h"
-#include "threads/synch.h"
-#include "userprog/pagedir.h"
-#include "filesys/filesys.h"
-#include "userprog/process.h"
+#include "../threads/thread.h"
+#include "../devices/input.h"
+#include "../threads/vaddr.h"
+#include "../threads/palloc.h"
+#include "./pagedir.h"
+#include "./process.h"
+#include "../devices/shutdown.h"
+#include "../threads/synch.h"
+#include "./pagedir.h"
+#include "../filesys/filesys.h"
+#include "./process.h"
+
 
 static void syscall_handler (struct intr_frame *);
+
+static bool valid_mem_access(const void *);
 static void exit(int);
 static int wait(int);
 static void halt(void);
@@ -30,6 +32,8 @@ static int write(int fd, const void* buffer, unsigned size);
 static void seek(int fd, unsigned position);
 static unsigned tell(int fd);
 static void close(int fd);
+
+static int checkfd (int fd);
 
 /* The availablity of the syscall */
 static void checkvalid(void *ptr, size_t size) {
@@ -57,117 +61,117 @@ static void checkvalidstring(const char *s) {
         checkvalid(s++, sizeof(char));
 }
 
+
+
+
 void
-syscall_init (void) 
+syscall_init (void)
 {
-  /* register and initialize the system call handler. */
-  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  /* here start the filesys_lock, assuming together with the filesys. */
-  lock_init(&filesys_lock);
+    /* register and initialize the system call handler. */
+    intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+    lock_init (&filesys_lock);
 }
 
-static void
+static void 
 syscall_handler (struct intr_frame *f) 
 {
-  void *esp = f->esp;
-  /*store the return value.*/
-  uint32_t *eax = &f->eax;
-
-  int syscall_num;
-  checkvalid (esp,sizeof(int));
-  /* Get the type of system call. */
-  syscall_num = *((int *) esp);
-  /* point to the first argument. */
-  esp+= sizeof(int);
-  if (syscall_num == SYS_HALT) {
-      halt();
-  }
-  else if (syscall_num == SYS_EXIT) {
-      checkvalid(esp, sizeof(int));
-      int status = *((int *)esp);
-      exit(status);
-  } else if (syscall_num == SYS_EXEC) {
-      checkvalid(esp, sizeof(char *));
-      const char *file_name = *((char **)esp);
-      esp += sizeof(char *);
-      checkvalidstring((char **)esp);
-      *eax = (uint32_t)exec((char **)esp);
-  } else if (syscall_num == SYS_WAIT) {
-      checkvalid(esp, sizeof(int));
-      int pid = *((int *)esp);
-      esp += sizeof(int);
-      *eax = (uint32_t)wait(pid);
-  } else if (syscall_num == SYS_CREATE) {
-      checkvalid(esp, sizeof(char *));
-      const char *file_name = *((char **)esp);
-      esp += sizeof(char *);
-      checkvalidstring(file_name);
-      checkvalid(esp, sizeof(unsigned));
-      unsigned initial_size = *((unsigned *)esp);
-      esp += sizeof(unsigned);
-      *eax = (uint32_t)create(file_name, initial_size);
-  } else if (syscall_num == SYS_REMOVE) {
-      checkvalid(esp, sizeof(char *));
-      const char *file_name = *((char **)esp);
-      esp += sizeof(char *);
-      checkvalidstring(file_name);
-      *eax = (uint32_t)remove(file_name);
-  } else if (syscall_num == SYS_OPEN) {
-      checkvalid(esp, sizeof(char *));
-      const char *file_name = *((char **)esp);
-      esp += sizeof(char *);
-      checkvalidstring(file_name);
-      *eax = (uint32_t)open(file_name);
-  } else if (syscall_num == SYS_FILESIZE) {
-      checkvalid(esp, sizeof(int));
-      int fd = *((int *)esp);
-      esp += sizeof(int);
-      *eax = (uint32_t)file_size(fd);
-  } else if (syscall_num == SYS_READ) {
-      checkvalid(esp, sizeof(int));
-      int fd = *((int *)esp);
-      esp += sizeof(int);
-      checkvalid(esp, sizeof(void *));
-      const void *buffer = *((void **)esp);
-      esp += sizeof(void *);
-      checkvalid(esp, sizeof(unsigned));
-      unsigned size = *((unsigned *)esp);
-      esp += sizeof(unsigned);
-      /* check that the given buffer is all valid to access. */
-      checkvalid(buffer, size);
-      *eax = (uint32_t)read(fd, buffer, size);
-  } else if (syscall_num == SYS_WRITE) {
-      checkvalid(esp, sizeof(int));
-      int fd = *((int *)esp);
-      esp += sizeof(int);
-      checkvalid(esp, sizeof(void *));
-      const void *buffer = *((void **)esp);
-      esp += sizeof(void *);
-      checkvalid(esp, sizeof(unsigned));
-      unsigned size = *((unsigned *)esp);
-      esp += sizeof(unsigned);
-      /* check that the given buffer is all valid to access. */
-      checkvalid(buffer, size);
-      *eax = (uint32_t)write(fd, buffer, size);
-  } else if (syscall_num == SYS_SEEK) {
-      checkvalid(esp, sizeof(int));
-      int fd = *((int *)esp);
-      esp += sizeof(int);
-      checkvalid(esp, sizeof(unsigned));
-      unsigned position = *((unsigned *)esp);
-      esp += sizeof(unsigned);
-      seek(fd, position);
-  } else if (syscall_num == SYS_TELL) {
-      checkvalid(esp, sizeof(int));
-      int fd = *((int *)esp);
-      esp += sizeof(int);
-      *eax = (uint32_t)tell(fd);
-  } else if (syscall_num == SYS_CLOSE) {
-      checkvalid(esp, sizeof(int));
-      int fd = *((int *)esp);
-      esp += sizeof(int);
-      close(fd);
-  }
+    void *esp = f->esp;
+    /*store the return value.*/
+    uint32_t *eax = &f->eax;
+    int syscall_num;
+    checkvalid(esp, sizeof(int));
+    /* Get the type of system call. */
+    syscall_num = *((int *)esp);
+    /* point to the first argument. */
+    esp += sizeof(int);
+    if (syscall_num == SYS_HALT) {
+        halt();
+    } else if (syscall_num == SYS_EXIT) {
+        checkvalid(esp, sizeof(int));
+        int status = *((int *)esp);
+        exit(status);
+    } else if (syscall_num == SYS_WAIT) {
+        checkvalid(esp, sizeof(int));
+        int pid = *((int *)esp);
+        esp += sizeof(int);
+        *eax = (uint32_t)wait(pid);
+    } else if (syscall_num == SYS_EXEC) {
+        checkvalid(esp, sizeof(char *));
+        const char *file_name = *((char **)esp);
+        esp += sizeof(char *);
+        checkvalidstring(file_name);
+        *eax = (uint32_t)exec(file_name);
+    } else if (syscall_num == SYS_CREATE) {
+        checkvalid(esp, sizeof(char *));
+        const char *file_name = *((char **)esp);
+        esp += sizeof(char *);
+        checkvalidstring(file_name);
+        checkvalid(esp, sizeof(unsigned));
+        unsigned initial_size = *((unsigned *)esp);
+        esp += sizeof(unsigned);
+        *eax = (uint32_t)create(file_name, initial_size);
+    } else if (syscall_num == SYS_REMOVE) {
+        checkvalid(esp, sizeof(char *));
+        const char *file_name = *((char **)esp);
+        esp += sizeof(char *);
+        checkvalidstring(file_name);
+        *eax = (uint32_t)remove(file_name);
+    } else if (syscall_num == SYS_OPEN) {
+        checkvalid(esp, sizeof(char *));
+        const char *file_name = *((char **)esp);
+        esp += sizeof(char *);
+        checkvalidstring(file_name);
+        *eax = (uint32_t)open(file_name);
+    } else if (syscall_num == SYS_FILESIZE) {
+        checkvalid(esp, sizeof(int));
+        int fd = *((int *)esp);
+        esp += sizeof(int);
+        *eax = (uint32_t)file_size(fd);
+    } else if (syscall_num == SYS_READ) {
+        checkvalid(esp, sizeof(int));
+        int fd = *((int *)esp);
+        esp += sizeof(int);
+        checkvalid(esp, sizeof(void *));
+        const void *buffer = *((void **)esp);
+        esp += sizeof(void *);
+        checkvalid(esp, sizeof(unsigned));
+        unsigned size = *((unsigned *)esp);
+        esp += sizeof(unsigned);
+        /* check that the given buffer is all valid to access. */
+        checkvalid(buffer, size);
+        *eax = (uint32_t)read(fd, buffer, size);
+    } else if (syscall_num == SYS_WRITE) {
+        checkvalid(esp, sizeof(int));
+        int fd = *((int *)esp);
+        esp += sizeof(int);
+        checkvalid(esp, sizeof(void *));
+        const void *buffer = *((void **)esp);
+        esp += sizeof(void *);
+        checkvalid(esp, sizeof(unsigned));
+        unsigned size = *((unsigned *)esp);
+        esp += sizeof(unsigned);
+        /* check that the given buffer is all valid to access. */
+        checkvalid(buffer, size);
+        *eax = (uint32_t)write(fd, buffer, size);
+    } else if (syscall_num == SYS_SEEK) {
+        checkvalid(esp, sizeof(int));
+        int fd = *((int *)esp);
+        esp += sizeof(int);
+        checkvalid(esp, sizeof(unsigned));
+        unsigned position = *((unsigned *)esp);
+        esp += sizeof(unsigned);
+        seek(fd, position);
+    } else if (syscall_num == SYS_TELL) {
+        checkvalid(esp, sizeof(int));
+        int fd = *((int *)esp);
+        esp += sizeof(int);
+        *eax = (uint32_t)tell(fd);
+    } else if (syscall_num == SYS_CLOSE) {
+        checkvalid(esp, sizeof(int));
+        int fd = *((int *)esp);
+        esp += sizeof(int);
+        close(fd);
+    }
 }
 static void exit(int status) {
     struct thread *t;
