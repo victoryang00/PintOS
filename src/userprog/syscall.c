@@ -16,7 +16,6 @@
 #include "userprog/process.h"
 
 static void syscall_handler (struct intr_frame *);
-static bool check_mem(const void *);
 static void exit(int);
 static int wait(int);
 static void halt(void);
@@ -70,8 +69,6 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  printf ("system call!\n");
-  thread_exit ();
   void *esp = f->esp;
   /*store the return value.*/
   uint32_t *eax = &f->eax;
@@ -267,13 +264,13 @@ static int write(int fd, const void *buffer, unsigned size) {
     /* handle standard output */
     if (fd == 1) {
         /* avoid buffer boom */
-        while (size - 200) {
+        for (size;size > 200;size-=100) {
             putbuf(buffChar, 200);
-            size -= 200;
             buffChar += 200;
             buffer_write += 200;
+            size -= 100;
         }
-        putbuf(buffChar, size);
+          putbuf(buffChar, size);
         buffer_write += size;
         return buffer_write;
     } else {
