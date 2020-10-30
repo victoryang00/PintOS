@@ -58,15 +58,13 @@ process_execute (const char *file_name)
   /* Free the file name created by malloc mannually */
   free(thread_name);
 
-  while (tid == TID_ERROR) {
+  if (tid == TID_ERROR) {
       free(fn_copy);
-      break;
   }
-  while (tid != TID_ERROR) {
+  if(tid != TID_ERROR) {
       child = find_thread_id(tid);
-      break;
   }
-  while (child != NULL) {
+  if (child != NULL) {
       sema_down(&child->ltem);
       /* If the process load fails. sema up its exit sema to let it free to exit.
          If the process load success, put it onto the children process list. */
@@ -76,7 +74,6 @@ process_execute (const char *file_name)
           tid = TID_ERROR;
           sema_up(&child->wsem);
       }
-      break;
   }
   return tid;
 }
