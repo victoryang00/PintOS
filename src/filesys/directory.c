@@ -21,59 +21,13 @@ struct dir_entry
     bool in_use;                        /* In use or free? */
   };
 
-
-// this funvtion has been lost, we don't need it now
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool
-dir_create_root (block_sector_t sector, size_t entry_cnt)
+dir_create (block_sector_t sector, size_t entry_cnt)
 {
-  return inode_create (sector, entry_cnt * sizeof (struct dir_entry), DIR_TYPE);
+  return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
 }
-
-
-
-struct inode *
-dir_create (block_sector_t sector, block_sector_t parent_sector)
-{
-  bool success = inode_create (sector, 2 * sizeof(struct dir_entry), DIR_TYPE);
- 
-
-  struct inode *inode = NULL;
-    if(success){
-      inode = inode_open (sector);
-      if (inode == NULL)
-        free_map_release_at (sector);
-    }
-
-
-  if (inode != NULL) 
-    {
-      struct dir_entry entries[2];
-
-      memset (entries, 0, sizeof entries);
-
-      /* "." entry. */
-      entries[0].inode_sector = sector;
-      strlcpy (entries[0].name, ".", sizeof entries[0].name);
-      entries[0].in_use = true;
-
-      /* ".." entry. */
-      entries[1].inode_sector = parent_sector;
-      strlcpy (entries[1].name, "..", sizeof entries[1].name);
-      entries[1].in_use = true;
-      
-      if (inode_write_at (inode, entries, sizeof entries, 0) != sizeof entries)
-        {
-          inode_remove (inode);
-          inode_close (inode); 
-          inode = NULL;
-        } 
-    }
-  return inode;
-}
-
-
 
 /* Opens and returns the directory for the given INODE, of which
    it takes ownership.  Returns a null pointer on failure. */
@@ -265,36 +219,18 @@ dir_remove (struct dir *dir, const char *name)
    NAME.  Returns true if successful, false if the directory
    contains no more entries. */
 bool
-dir_readdir (struct dir *dir, char name[NAME_MAX + 1], int order)
+dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 {
   struct dir_entry e;
-  int cnt = 0;
 
   while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e) 
     {
       dir->pos += sizeof e;
-      if (e.in_use && strcmp (e.name, ".") && strcmp (e.name, ".."))
+      if (e.in_use)
         {
-          cnt ++;
-          if(cnt==order){
-            strlcpy (name, e.name, NAME_MAX + 1);
-            return true;
-          }
+          strlcpy (name, e.name, NAME_MAX + 1);
+          return true;
         } 
     }
   return false;
-}
-
-bool
-is_empty_dir (struct dir *dir)
-{
-  char name[NAME_MAX + 1];
-  return !dir_readdir(dir, name, 1);
-}
-
-
-bool
-is_dir_exist (struct dir *dir)
-{
-  return !dir->inode->removed;
 }

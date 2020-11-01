@@ -1,365 +1,612 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
-#include <syscall-nr.h>
-#include <devices/shutdown.h>
-#include <threads/vaddr.h>
-#include <filesys/filesys.h>
 #include <string.h>
-#include <filesys/file.h>
-#include <devices/input.h>
-#include <threads/palloc.h>
-#include <threads/malloc.h>
-#include "threads/interrupt.h"
-#include "threads/thread.h"
-#include "process.h"
-#include "pagedir.h"
-#include "syscall.h"
-#include "filesys/inode.h"
-#include "filesys/file.h"
-#include "lib/user/syscall.h"
+#include <syscall-nr.h>
+#include "userprog/process.h"
+#include "userprog/pagedir.h"
+#include "devices/input.h"
+#include "devices/shutdown.h"
 #include "filesys/directory.h"
-#include "filesys/cache.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+#include "threads/interrupt.h"
+#include "threads/malloc.h"
+#include "threads/palloc.h"
+#include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "vm/page.h"
 
-// syscall array
-syscall_function syscalls[SYSCALL_NUMBER];
+
+static int sys_halt (void);
+static int sys_exit (int status);
+static int sys_exec (const char *ufile);
+static int sys_wait (tid_t);
+static int sys_create (const char *ufile, unsigned initial_size);
+static int sys_remove (const char *ufile);
+static int sys_open (const char *ufile);
+static int sys_filesize (int handle);
+static int sys_read (int handle, void *udst_, unsigned size);
+static int sys_write (int handle, void *usrc_, unsigned size);
+static int sys_seek (int handle, unsigned position);
+static int sys_tell (int handle);
+static int sys_close (int handle);
+static int sys_mmap (int handle, void *addr);
+static int sys_munmap (int mapping);
 
 static void syscall_handler (struct intr_frame *);
+static void copy_in (void *, const void *, size_t);
 
-void exit(int exit_status){
-  thread_current()->exit_status = exit_status;
-  thread_exit ();
-}
+static struct lock fs_lock;
 
 void
 syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  // initialize the syscalls
-  for(int i = 0; i < SYSCALL_NUMBER; i++) syscalls[i] = NULL;
-  // bind the syscalls to specific index of the array
-  syscalls[SYS_EXIT] = sys_exit;
-  syscalls[SYS_HALT] = sys_halt;
-  syscalls[SYS_EXEC] = sys_exec;
-  syscalls[SYS_WAIT] = sys_wait;
-  syscalls[SYS_CREATE] = sys_create;
-  syscalls[SYS_REMOVE] = sys_remove;
-  syscalls[SYS_OPEN] = sys_open;
-  syscalls[SYS_FILESIZE] = sys_filesize;
-  syscalls[SYS_READ] = sys_read;
-  syscalls[SYS_WRITE] = sys_write;
-  syscalls[SYS_SEEK] = sys_seek;
-  syscalls[SYS_TELL] = sys_tell;
-  syscalls[SYS_CLOSE] = sys_close;
-  /*those are syscall pro4 need*/
-  syscalls[SYS_CHDIR] = sys_CHDIR;  /* Change the current directory. */
-  syscalls[SYS_MKDIR] = sys_MKDIR;  /* Create a directory. */
-  syscalls[SYS_READDIR] = sys_READDIR;/* Reads a directory entry. */
-  syscalls[SYS_ISDIR] = sys_ISDIR;   /* Tests if a fd represents a directory. */
-  syscalls[SYS_INUMBER] = sys_INUMBER; /* Returns the inode number for a fd. */
-  /* For cache test */
-  syscalls[SYS_CACHE_FLUSH] = sys_CACHE_FLUSH; /* Cache flash to disk, return the number of flash block*/ 
+  lock_init (&fs_lock);
 }
 
-// check whether page p and p+3 has been in kernel virtual memory
-void check_page(void *p) {
-  void *pagedir = pagedir_get_page(thread_current()->pagedir, p);
-  if(pagedir == NULL) exit(-1);
-  pagedir = pagedir_get_page(thread_current()->pagedir, p + 3);
-  if(pagedir == NULL) exit(-1);
-}
-
-// check whether page p and p+3 is a user virtual address
-void check_addr(void *p) {
-  if(!is_user_vaddr(p)) exit(-1);
-  if(!is_user_vaddr(p + 3)) exit(-1);
-}
-
-// make check for page p
-void check(void *p) {
-  if(p == NULL) exit(-1);
-  check_addr(p);
-  check_page(p);
-}
-
-// make check for every function arguments
-void check_func_args(void *p, int argc) {
-  for(int i = 0; i < argc; i++) {
-    check(p);
-    p++;
-  }
-}
-
-// search the file list of the thread_current()
-// to get the file has corresponding fd
-struct file_node * find_file(struct list *files, int fd){
-  struct list_elem *e;
-  struct file_node * fn =NULL;
-  for (e = list_begin (files); e != list_end (files); e = list_next (e)){
-    fn = list_entry (e, struct file_node, file_elem);
-    if (fd == fn->fd)
-      return fn;
-  }
-  return NULL;
-}
-
+/* System call handler. */
 static void
 syscall_handler (struct intr_frame *f)
 {
-  check((void *)f->esp);
-  check((void *)(f->esp + 4));
-  int num=*((int *)(f->esp));
-  // check whether the function is implemented
-  if(num < 0 || num >= SYSCALL_NUMBER) exit(-1);
-  if(syscalls[num] == NULL) exit(-1);
-  syscalls[num](f);
+  typedef int syscall_function (int, int, int);
+
+  /* A system call. */
+  struct syscall
+    {
+      size_t arg_cnt;           /* Number of arguments. */
+      syscall_function *func;   /* Implementation. */
+    };
+
+  /* Table of system calls. */
+  static const struct syscall syscall_table[] =
+    {
+      {0, (syscall_function *) sys_halt},
+      {1, (syscall_function *) sys_exit},
+      {1, (syscall_function *) sys_exec},
+      {1, (syscall_function *) sys_wait},
+      {2, (syscall_function *) sys_create},
+      {1, (syscall_function *) sys_remove},
+      {1, (syscall_function *) sys_open},
+      {1, (syscall_function *) sys_filesize},
+      {3, (syscall_function *) sys_read},
+      {3, (syscall_function *) sys_write},
+      {2, (syscall_function *) sys_seek},
+      {1, (syscall_function *) sys_tell},
+      {1, (syscall_function *) sys_close},
+      {2, (syscall_function *) sys_mmap},
+      {1, (syscall_function *) sys_munmap},
+    };
+
+  const struct syscall *sc;
+  unsigned call_nr;
+  int args[3];
+
+  /* Get the system call. */
+  copy_in (&call_nr, f->esp, sizeof call_nr);
+  if (call_nr >= sizeof syscall_table / sizeof *syscall_table)
+    thread_exit ();
+  sc = syscall_table + call_nr;
+
+  /* Get the system call arguments. */
+  ASSERT (sc->arg_cnt <= sizeof args / sizeof *args);
+  memset (args, 0, sizeof args);
+  copy_in (args, (uint32_t *) f->esp + 1, sizeof *args * sc->arg_cnt);
+
+  /* Execute the system call,
+     and set the return value. */
+  f->eax = sc->func (args[0], args[1], args[2]);
 }
 
-void sys_exit(struct intr_frame * f) {
-  int *p = f->esp;
-  // save exit status
-  exit(*(p + 1));
+/* Copies SIZE bytes from user address USRC to kernel address
+   DST.
+   Call thread_exit() if any of the user accesses are invalid. */
+static void
+copy_in (void *dst_, const void *usrc_, size_t size)
+{
+  uint8_t *dst = dst_;
+  const uint8_t *usrc = usrc_;
+
+  while (size > 0)
+    {
+      size_t chunk_size = PGSIZE - pg_ofs (usrc);
+      if (chunk_size > size)
+        chunk_size = size;
+
+      if (!page_lock (usrc, false))
+        thread_exit ();
+      memcpy (dst, usrc, chunk_size);
+      page_unlock (usrc);
+
+      dst += chunk_size;
+      usrc += chunk_size;
+      size -= chunk_size;
+    }
 }
 
-void sys_halt(struct intr_frame * f UNUSED) {
-  shutdown_power_off();
+/* Creates a copy of user string US in kernel memory
+   and returns it as a page that must be freed with
+   palloc_free_page().
+   Truncates the string at PGSIZE bytes in size.
+   Call thread_exit() if any of the user accesses are invalid. */
+static char *
+copy_in_string (const char *us)
+{
+  char *ks;
+  char *upage;
+  size_t length;
+
+  ks = palloc_get_page (0);
+  if (ks == NULL)
+    thread_exit ();
+
+  length = 0;
+  for (;;)
+    {
+      upage = pg_round_down (us);
+      if (!page_lock (upage, false))
+        goto lock_error;
+
+      for (; us < upage + PGSIZE; us++)
+        {
+          ks[length++] = *us;
+          if (*us == '\0')
+            {
+              page_unlock (upage);
+              return ks;
+            }
+          else if (length >= PGSIZE)
+            goto too_long_error;
+        }
+
+      page_unlock (upage);
+    }
+
+ too_long_error:
+  page_unlock (upage);
+ lock_error:
+  palloc_free_page (ks);
+  thread_exit ();
 }
 
-void sys_exec(struct intr_frame * f) {
-  int * p =f->esp;
-  check((void *)(p + 1));
-  check((void *)(*(p + 1)));
-  f->eax = process_execute((char*)*(p + 1));
+/* Halt system call. */
+static int
+sys_halt (void)
+{
+  shutdown_power_off ();
 }
 
-void sys_wait(struct intr_frame * f) {
-  int * p =f->esp;
-  check(p + 1);
-  f->eax = process_wait(*(p + 1));
+/* Exit system call. */
+static int
+sys_exit (int exit_code)
+{
+  thread_current ()->exit_code = exit_code;
+  thread_exit ();
+  NOT_REACHED ();
 }
 
-void sys_create(struct intr_frame * f) {
-  int * p =f->esp;
-  check_func_args((void *)(p + 1), 2);
-  check((void *)*(p + 1));
+/* Exec system call. */
+static int
+sys_exec (const char *ufile)
+{
+  tid_t tid;
+  char *kfile = copy_in_string (ufile);
 
-  acquire_file_lock();
-  // thread_exit ();
-  char * name = (const char *)*(p + 1);
-  off_t size = *(p + 2);
-  bool ok = filesys_create(name, size);
-  f->eax = ok;
-  release_file_lock();
+  lock_acquire (&fs_lock);
+  tid = process_execute (kfile);
+  lock_release (&fs_lock);
+
+  palloc_free_page (kfile);
+
+  return tid;
 }
 
-void sys_remove(struct intr_frame * f) {
-  int * p =f->esp;
-  
-  check_func_args((void *)(p + 1), 1);
-  check((void*)*(p + 1));
-
-  acquire_file_lock();
-  f->eax = filesys_remove((const char *)*(p + 1));
-  release_file_lock();
+/* Wait system call. */
+static int
+sys_wait (tid_t child)
+{
+  return process_wait (child);
 }
 
-void sys_open(struct intr_frame * f) {
-  int * p =f->esp;
-  check_func_args((void *)(p + 1), 1);
-  check((void*)*(p + 1));
-
-  struct thread * t = thread_current();
-  acquire_file_lock();
-  struct file * open_f = filesys_open((const char *)*(p + 1));
-  release_file_lock();
-  // check whether the open file is valid
-  if(open_f){
-    struct file_node *fn = malloc(sizeof(struct file_node));
-    fn->fd = t->max_fd++;
-    fn->file = open_f;
-    fn->read_dir_cnt = 0;
-    // put in file list of the corresponding thread
-    list_push_back(&t->files, &fn->file_elem);
-    f->eax = fn->fd;
-  } else
-    f->eax = -1;
-}
-
-void sys_filesize(struct intr_frame * f) {
-  int * p =f->esp;
-  check_func_args((void *)(p + 1), 1);
-  struct file_node * open_f = find_file(&thread_current()->files, *(p + 1));
-  // check whether the write file is valid
-  if (open_f){
-    acquire_file_lock();
-    f->eax = file_length(open_f->file);
-    release_file_lock();
-  } else
-    f->eax = -1;
-}
-
-void sys_read(struct intr_frame * f) {
-  int * p =f->esp;
-  check_func_args((void *)(p + 1), 3);
-  check((void *)*(p + 2));
-
-  int fd = *(p + 1);
-  uint8_t * buffer = (uint8_t*)*(p + 2);
-  off_t size = *(p + 3);  
-  // read from standard input
-  if (fd == 0) {
-    for (int i=0; i<size; i++)
-      buffer[i] = input_getc();
-    f->eax = size;
-  }
-  else{
-    struct file_node * open_f = find_file(&thread_current()->files, *(p + 1));
-    // check whether the read file is valid
-    if (open_f){
-       if(!is_really_file(open_f->file)){
-         f->eax = -1;
-         return;
-       }
-      acquire_file_lock();
-      f->eax = file_read(open_f->file, buffer, size);
-      release_file_lock();
-    } else
-      f->eax = -1;
-  }
-}
-
-void sys_write(struct intr_frame * f) {
-  int * p =f->esp;
-  check_func_args((void *)(p + 1), 3);
-  check((void *)*(p + 2));
-  int fd2 = *(p + 1);
-  const char * buffer2 = (const char *)*(p + 2);
-  off_t size2 = *(p + 3);
-  // write to standard output
-  if (fd2==1) {
-    putbuf(buffer2,size2);
-    f->eax = size2;
-  }
-  else{
-    struct file_node * openf = find_file(&thread_current()->files, *(p + 1));
-    // check whether the write file is valid
-    if (openf){
-      acquire_file_lock();
-      bool is_file = is_really_file(openf->file);
-      if(!is_file){
-        f->eax = -1;
-        return;
-      }
-      f->eax = file_write(openf->file, buffer2, size2);
-      release_file_lock();
-    } else
-      f->eax = 0;
-  }
-}
-
-void sys_seek(struct intr_frame * f) {
-  int * p =f->esp;
-  check_func_args((void *)(p + 1), 2);
-  struct file_node * openf = find_file(&thread_current()->files, *(p + 1));
-  if (openf){
-    acquire_file_lock();
-    file_seek(openf->file, *(p + 2));
-    release_file_lock();
-  }
-}
-
-void sys_tell(struct intr_frame * f) {
-  int * p =f->esp;
-  check_func_args((void *)(p + 1), 1);
-  struct file_node * open_f = find_file(&thread_current()->files, *(p + 1));
-  // check whether the tell file is valid
-  if (open_f){
-    acquire_file_lock();
-    f->eax = file_tell(open_f->file);
-    release_file_lock();
-  }else
-    f->eax = -1;
-}
-
-void sys_close(struct intr_frame * f) {
-  int *p = f->esp;
-  check_func_args((void *)(p + 1), 1);
-  struct file_node * openf = find_file(&thread_current()->files, *(p + 1));
-  if (openf){
-    acquire_file_lock();
-    file_close(openf->file);
-    release_file_lock();
-    // remove file form file list
-    list_remove(&openf->file_elem);
-    free(openf);
-  }
-}
-
-
-
-/* Project 4 only. */
-void sys_CHDIR(struct intr_frame *f){
-  /* Change the current directory. */
-  int * p =f->esp;
-  check_func_args((void *)(p + 1), 1);
-  const char * udir = (const char *)*(p + 1);
-  f->eax = filesys_chdir(udir);
-}
-void sys_MKDIR(struct intr_frame *f){
-  /* Create a directory. */
-
-  int * p =f->esp;
-  // somthing to check address
-  const char * file_name = (const char *)*(p + 1);
-  if(strcmp(file_name, "")==0){
-    f->eax = 0;
-  }
-  bool ok = filesys_dir_create(file_name, 0);
-  f->eax = ok;
-}
-void sys_READDIR(struct intr_frame *f){
-  /* Reads a directory entry. */
-  int *p = f->esp;
-  int fd = *(p + 1);
-  const char * dir_name = (const char *)*(p + 2);
-
-  struct file_node * openf = find_file(&thread_current()->files, fd);
+/* Create system call. */
+static int
+sys_create (const char *ufile, unsigned initial_size)
+{
+  char *kfile = copy_in_string (ufile);
   bool ok;
-  if(openf!=NULL){
-    openf->read_dir_cnt ++;
-    ok = read_dir_by_file_node(openf->file, dir_name, openf->read_dir_cnt);
-  }
-  f->eax = ok;
-  // if (ok)
-  //   copy_out (uname, name, strlen (name) + 1);
-  // return ok;
 
+  lock_acquire (&fs_lock);
+  ok = filesys_create (kfile, initial_size);
+  lock_release (&fs_lock);
+
+  palloc_free_page (kfile);
+
+  return ok;
 }
 
-void sys_ISDIR(struct intr_frame *f){
-  /* Tests if a fd represents a directory. */
-  int * p =f->esp;
-  int fd = *(p + 1);
-  struct file_node * openf = find_file(&thread_current()->files, fd);
-  // check whether the write file is valid
-  if (openf){
-    f->eax = !is_really_file(openf->file);
-  }else{
-    f->eax = false;
-  }
+/* Remove system call. */
+static int
+sys_remove (const char *ufile)
+{
+  char *kfile = copy_in_string (ufile);
+  bool ok;
 
+  lock_acquire (&fs_lock);
+  ok = filesys_remove (kfile);
+  lock_release (&fs_lock);
+
+  palloc_free_page (kfile);
+
+  return ok;
+}
+
+/* A file descriptor, for binding a file handle to a file. */
+struct file_descriptor
+  {
+    struct list_elem elem;      /* List element. */
+    struct file *file;          /* File. */
+    int handle;                 /* File handle. */
+  };
+
+/* Open system call. */
+static int
+sys_open (const char *ufile)
+{
+  char *kfile = copy_in_string (ufile);
+  struct file_descriptor *fd;
+  int handle = -1;
+
+  fd = malloc (sizeof *fd);
+  if (fd != NULL)
+    {
+      lock_acquire (&fs_lock);
+      fd->file = filesys_open (kfile);
+      if (fd->file != NULL)
+        {
+          struct thread *cur = thread_current ();
+          handle = fd->handle = cur->next_handle++;
+          list_push_front (&cur->fds, &fd->elem);
+        }
+      else
+        free (fd);
+      lock_release (&fs_lock);
+    }
+
+  palloc_free_page (kfile);
+  return handle;
 }
 
-void sys_INUMBER(struct intr_frame *f){
-  /* Returns the inode number for a fd. */
-  int * p =f->esp;
-  int fd = *(p + 1);
-  struct file_node * openf = find_file(&thread_current()->files, fd);
-  // check whether the write file is valid
-  if (openf){
-    f->eax = get_inumber(openf->file);
+/* Returns the file descriptor associated with the given handle.
+   Terminates the process if HANDLE is not associated with an
+   open file. */
+static struct file_descriptor *
+lookup_fd (int handle)
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e;
+
+  for (e = list_begin (&cur->fds); e != list_end (&cur->fds);
+       e = list_next (e))
+    {
+      struct file_descriptor *fd;
+      fd = list_entry (e, struct file_descriptor, elem);
+      if (fd->handle == handle)
+        return fd;
+    }
+
+  thread_exit ();
+}
+
+/* Filesize system call. */
+static int
+sys_filesize (int handle)
+{
+  struct file_descriptor *fd = lookup_fd (handle);
+  int size;
+
+  lock_acquire (&fs_lock);
+  size = file_length (fd->file);
+  lock_release (&fs_lock);
+
+  return size;
+}
+
+/* Read system call. */
+static int
+sys_read (int handle, void *udst_, unsigned size)
+{
+  uint8_t *udst = udst_;
+  struct file_descriptor *fd;
+  int bytes_read = 0;
+
+  fd = lookup_fd (handle);
+  while (size > 0)
+    {
+      /* How much to read into this page? */
+      size_t page_left = PGSIZE - pg_ofs (udst);
+      size_t read_amt = size < page_left ? size : page_left;
+      off_t retval;
+
+      /* Read from file into page. */
+      if (handle != STDIN_FILENO)
+        {
+          if (!page_lock (udst, true))
+            thread_exit ();
+          lock_acquire (&fs_lock);
+          retval = file_read (fd->file, udst, read_amt);
+          lock_release (&fs_lock);
+          page_unlock (udst);
+        }
+      else
+        {
+          size_t i;
+
+          for (i = 0; i < read_amt; i++)
+            {
+              char c = input_getc ();
+              if (!page_lock (udst, true))
+                thread_exit ();
+              udst[i] = c;
+              page_unlock (udst);
+            }
+          bytes_read = read_amt;
+        }
+
+      /* Check success. */
+      if (retval < 0)
+        {
+          if (bytes_read == 0)
+            bytes_read = -1;
+          break;
+        }
+      bytes_read += retval;
+      if (retval != (off_t) read_amt)
+        {
+          /* Short read, so we're done. */
+          break;
+        }
+
+      /* Advance. */
+      udst += retval;
+      size -= retval;
+    }
+
+  return bytes_read;
+}
+
+/* Write system call. */
+static int
+sys_write (int handle, void *usrc_, unsigned size)
+{
+  uint8_t *usrc = usrc_;
+  struct file_descriptor *fd = NULL;
+  int bytes_written = 0;
+
+  /* Lookup up file descriptor. */
+  if (handle != STDOUT_FILENO)
+    fd = lookup_fd (handle);
+
+  while (size > 0)
+    {
+      /* How much bytes to write to this page? */
+      size_t page_left = PGSIZE - pg_ofs (usrc);
+      size_t write_amt = size < page_left ? size : page_left;
+      off_t retval;
+
+      /* Write from page into file. */
+      if (!page_lock (usrc, false))
+        thread_exit ();
+      lock_acquire (&fs_lock);
+      if (handle == STDOUT_FILENO)
+        {
+          putbuf ((char *) usrc, write_amt);
+          retval = write_amt;
+        }
+      else
+        retval = file_write (fd->file, usrc, write_amt);
+      lock_release (&fs_lock);
+      page_unlock (usrc);
+
+      /* Handle return value. */
+      if (retval < 0)
+        {
+          if (bytes_written == 0)
+            bytes_written = -1;
+          break;
+        }
+      bytes_written += retval;
+
+      /* If it was a short write we're done. */
+      if (retval != (off_t) write_amt)
+        break;
+
+      /* Advance. */
+      usrc += retval;
+      size -= retval;
+    }
+
+  return bytes_written;
+}
+
+/* Seek system call. */
+static int
+sys_seek (int handle, unsigned position)
+{
+  struct file_descriptor *fd = lookup_fd (handle);
+
+  lock_acquire (&fs_lock);
+  if ((off_t) position >= 0)
+    file_seek (fd->file, position);
+  lock_release (&fs_lock);
+
+  return 0;
+}
+
+/* Tell system call. */
+static int
+sys_tell (int handle)
+{
+  struct file_descriptor *fd = lookup_fd (handle);
+  unsigned position;
+
+  lock_acquire (&fs_lock);
+  position = file_tell (fd->file);
+  lock_release (&fs_lock);
+
+  return position;
+}
+
+/* Close system call. */
+static int
+sys_close (int handle)
+{
+  struct file_descriptor *fd = lookup_fd (handle);
+  lock_acquire (&fs_lock);
+  file_close (fd->file);
+  lock_release (&fs_lock);
+  list_remove (&fd->elem);
+  free (fd);
+  return 0;
+}
+
+/* Binds a mapping id to a region of memory and a file. */
+struct mapping
+  {
+    struct list_elem elem;      /* List element. */
+    int handle;                 /* Mapping id. */
+    struct file *file;          /* File. */
+    uint8_t *base;              /* Start of memory mapping. */
+    size_t page_cnt;            /* Number of pages mapped. */
+  };
+
+/* Returns the file descriptor associated with the given handle.
+   Terminates the process if HANDLE is not associated with a
+   memory mapping. */
+static struct mapping *
+lookup_mapping (int handle)
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e;
+
+  for (e = list_begin (&cur->mappings); e != list_end (&cur->mappings);
+       e = list_next (e))
+    {
+      struct mapping *m = list_entry (e, struct mapping, elem);
+      if (m->handle == handle)
+        return m;
+    }
+
+  thread_exit ();
+}
+
+/* Remove mapping M from the virtual address space,
+   writing back any pages that have changed. */
+static void
+unmap (struct mapping *m)
+{
+  /* Remove this mapping from the list of mappings for this process. */
+  list_remove(&m->elem);
+
+  /* For each page in the memory mapped file... */
+  for(int i = 0; i < m->page_cnt; i++)
+  {
+    /* ...determine whether or not the page is dirty (modified). If so, write that page back out to disk. */
+    if (pagedir_is_dirty(thread_current()->pagedir, ((const void *) ((m->base) + (PGSIZE * i)))))
+    {
+      lock_acquire (&fs_lock);
+      file_write_at(m->file, (const void *) (m->base + (PGSIZE * i)), (PGSIZE*(m->page_cnt)), (PGSIZE * i));
+      lock_release (&fs_lock);
+    }
+  }
+
+  /* Finally, deallocate all memory mapped pages (free up the process memory). */
+  for(int i = 0; i < m->page_cnt; i++)
+  {
+    page_deallocate((void *) ((m->base) + (PGSIZE * i)));
   }
 }
 
-void sys_CACHE_FLUSH(struct intr_frame *f) {
-  f->eax = test_cache_flash();
+/* Mmap system call. */
+static int
+sys_mmap (int handle, void *addr)
+{
+  struct file_descriptor *fd = lookup_fd (handle);
+  struct mapping *m = malloc (sizeof *m);
+  size_t offset;
+  off_t length;
+
+  if (m == NULL || addr == NULL || pg_ofs (addr) != 0)
+    return -1;
+
+  m->handle = thread_current ()->next_handle++;
+  lock_acquire (&fs_lock);
+  m->file = file_reopen (fd->file);
+  lock_release (&fs_lock);
+  if (m->file == NULL)
+    {
+      free (m);
+      return -1;
+    }
+  m->base = addr;
+  m->page_cnt = 0;
+  list_push_front (&thread_current ()->mappings, &m->elem);
+
+  offset = 0;
+  lock_acquire (&fs_lock);
+  length = file_length (m->file);
+  lock_release (&fs_lock);
+  while (length > 0)
+    {
+      struct page *p = page_allocate ((uint8_t *) addr + offset, false);
+      if (p == NULL)
+        {
+          unmap (m);
+          return -1;
+        }
+      p->private = false;
+      p->file = m->file;
+      p->file_offset = offset;
+      p->file_bytes = length >= PGSIZE ? PGSIZE : length;
+      offset += p->file_bytes;
+      length -= p->file_bytes;
+      m->page_cnt++;
+    }
+
+  return m->handle;
+}
+
+/* Munmap system call. */
+static int
+sys_munmap (int mapping)
+{
+  /* Get the map corresponding to the given map id, and attempt to unmap. */
+  struct mapping *map = lookup_mapping(mapping);
+  unmap(map);
+  return 0;
+}
+
+/* On thread exit, close all open files and unmap all mappings. */
+void
+syscall_exit (void)
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e, *next;
+
+  for (e = list_begin (&cur->fds); e != list_end (&cur->fds); e = next)
+    {
+      struct file_descriptor *fd = list_entry (e, struct file_descriptor, elem);
+      next = list_next (e);
+      lock_acquire (&fs_lock);
+      file_close (fd->file);
+      lock_release (&fs_lock);
+      free (fd);
+    }
+
+  for (e = list_begin (&cur->mappings); e != list_end (&cur->mappings);
+       e = next)
+    {
+      struct mapping *m = list_entry (e, struct mapping, elem);
+      next = list_next (e);
+      unmap (m);
+    }
 }

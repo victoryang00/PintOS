@@ -4,18 +4,16 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
-#include <filesys/file.h>
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
 #include "threads/palloc.h"
-#include "threads/malloc.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-#include "userprog/syscall.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -39,9 +37,6 @@ static struct thread *initial_thread;
 
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
-
-// global file lock for file manipulation
-static struct lock file_lock;
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
@@ -70,7 +65,8 @@ static void kernel_thread (thread_func *, void *aux);
 static void idle (void *aux UNUSED);
 static struct thread *running_thread (void);
 static struct thread *next_thread_to_run (void);
-static void init_thread (struct thread *, const char *name, int priority);
+static void init_thread (struct thread *, const char *name, int priority,
+                         tid_t);
 static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
@@ -96,18 +92,13 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
-  lock_init(&file_lock);
   list_init (&ready_list);
   list_init (&all_list);
 
-  list_init(&sleep_list);
-
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
-  init_thread (initial_thread, "main", PRI_DEFAULT);
+  init_thread (initial_thread, "main", PRI_DEFAULT, 0);
   initial_thread->status = THREAD_RUNNING;
-  initial_thread->tid = allocate_tid ();
-
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -181,6 +172,7 @@ thread_create (const char *name, int priority,
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
   tid_t tid;
+  enum intr_level old_level;
 
   ASSERT (function != NULL);
 
@@ -190,13 +182,13 @@ thread_create (const char *name, int priority,
     return TID_ERROR;
 
   /* Initialize thread. */
-  init_thread (t, name, priority);
-  tid = t->tid = allocate_tid ();
-  // allocate space for child thread struct
-  struct child_thread *ct = malloc(sizeof(struct child_thread));
-  ct->tid = tid;
-  // add the child thread struct to the childs of the current thread 
-  list_push_back (&thread_current()->childs, &(ct->child_thread_elem));
+  init_thread (t, name, priority, allocate_tid ());
+  tid = t->tid;
+
+  /* Prepare thread for first run by initializing its stack.
+     Do this atomically so intermediate values for the 'stack' 
+     member cannot be observed. */
+  old_level = intr_disable ();
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -212,6 +204,8 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
+
+  intr_set_level (old_level);
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -297,50 +291,15 @@ thread_exit (void)
 {
   ASSERT (!intr_context ());
 
+  syscall_exit ();
 #ifdef USERPROG
   process_exit ();
 #endif
 
-  intr_disable ();
-
-  // print exit information
-  if( thread_current()->parent->exec_status){
-    printf("%s: exit(%d)\n",thread_name(),thread_current()->exit_status);
-  }
-  // let parent child traverse to find the corresponding child thread
-  // for thread_current()
-  // to update the child thread struct exit status
-  struct list_elem *e;
-  struct list *l = &thread_current()->parent->childs;
-  struct child_thread *ct;
-
-  for (e = list_begin(l); e != list_end(l); e = list_next(e)) {
-    ct = list_entry(e, struct child_thread, child_thread_elem);
-    if(ct->tid == thread_current()->tid) {
-      ct->exit_status = thread_current()->exit_status;
-      break;
-    }
-  }
-
-    // up the child semaphore to stop parent thread from waiting
-  sema_up(&thread_current()->child_sema);
-  //close the executable file
-  file_close(thread_current()->executable);
-  // close all file that opened in the thread_current()
-  // file list
-  struct list *files = &thread_current()->files;
-  while(!list_empty(files))
-  {
-    struct file_node *f = list_entry (list_pop_front(files), struct file_node, file_elem);
-    file_close(f->file);
-    free(f);
-  }
-
-
-  // printf("exit tid %d\n", thread_current()->tid);
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
+  intr_disable ();
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
@@ -500,37 +459,30 @@ is_thread (struct thread *t)
 /* Does basic initialization of T as a blocked thread named
    NAME. */
 static void
-init_thread (struct thread *t, const char *name, int priority)
+init_thread (struct thread *t, const char *name, int priority, tid_t tid)
 {
-  enum intr_level old_level;
-
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
 
   memset (t, 0, sizeof *t);
+  t->tid = tid;
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->exit_code = -1;
+  t->wait_status = NULL;
+  list_init (&t->children);
+  sema_init (&t->timer_sema, 0);
+  t->pagedir = NULL;
+  t->pages = NULL;
+  t->bin_file = NULL;
+  list_init (&t->fds);
+  list_init (&t->mappings);
+  t->next_handle = 2;
   t->magic = THREAD_MAGIC;
-  // initiable thread relative variables
-  list_init(&t->childs);
-  list_init(&t->files);
-  sema_init(&t->exec_sema,0);
-  sema_init(&t->child_sema, 0);
-
-  t->exec_status = true;
-  t->exit_status = -1;
-  t->executable = NULL;
-  t->max_fd = 2;
-
-  if(t == initial_thread) t->parent = NULL;
-  else t->parent = thread_current();
-
-  old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
-  intr_set_level (old_level);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -602,13 +554,6 @@ thread_schedule_tail (struct thread *prev)
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
-
-      // release the resources
-      while(!list_empty(&prev->childs)){
-        struct child_thread *act = list_entry (list_pop_front(&prev->childs), struct child_thread, child_thread_elem);
-        free(act);
-      }
-
       palloc_free_page (prev);
     }
 }
@@ -649,47 +594,7 @@ allocate_tid (void)
 
   return tid;
 }
-
-void acquire_file_lock(){
-  lock_acquire(&file_lock);
-}
-
-void release_file_lock(){
-  lock_release(&file_lock);
-}
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
-
-int child_thread_wait(int child_tid) {
-  struct list_elem *e;
-  struct list *l = &thread_current()->childs;
-  struct thread *t=NULL;
-
-  int status = -1;
-  // wait for child thread
-  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e))
-  {
-    t = list_entry (e, struct thread, allelem);
-    if(t->tid==child_tid){
-        sema_down(&t->child_sema);
-        break;
-    }
-  }
-  // get child thread exit status
-  struct child_thread *ct = NULL;
-  for (e = list_begin(l); e != list_end(l); e = list_next(e)) {
-    ct = list_entry(e, struct child_thread, child_thread_elem);
-    if(ct->tid == child_tid) {
-      status = ct->exit_status;
-      break;
-    }
-  }
-  // remove child thread from thread list
-  if(e == list_end(l)) return -1;
-  list_remove(e);
-  free(ct);
-  
-  return status;
-}
