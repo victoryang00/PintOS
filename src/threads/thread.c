@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include <hash.h>
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -807,6 +808,12 @@ thread_recalculate_priority(struct thread *t,void *aux UNUSED)             //eve
     t->priority = PRI_MAX;
   if(t->priority < PRI_MIN)
     t->priority = PRI_MIN;
+}
+
+/* the helper function to set tid */
+void
+thread_set_tid(struct thread *t, tid_t tid){
+  t->tid = tid;
 }
 
 /* Offset of `stack' member within `struct thread'.

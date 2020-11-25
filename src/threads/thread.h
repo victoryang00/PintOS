@@ -122,10 +122,14 @@ struct thread
     int base_priority;                  /* the right now priority. */
     int nice;                           /* the parameter in the cpu equation. */
     int recent_cpu;                     /* the float emulated by integet. */
-#ifdef USERPROG
+
+    /* For Virtual Memory */
+    void *stack_pointer;                /* The variable to store the thread's esp. */
+    struct hash *pages;                 /* The variable to store the page table. */
+    struct list mapped_file;            /* The memory mapped file. */
+
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-#endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
@@ -180,4 +184,6 @@ void thread_increase_recent_cpu(void);
 void thread_recalculate_load_avg(void);
 void thread_recalculate_recent_cpu(struct thread *t,void *);
 void thread_recalculate_priority(struct thread *t,void *);
+
+void thread_set_tid(struct thread *t, tid_t tid);
 #endif /* threads/thread.h */

@@ -14,10 +14,13 @@
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
+#include "vm/page.h"
+#include "vm/frame.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -336,6 +339,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
         goto done;
     }
     process_activate ();
+
+    /* Create page hash table. */
+    t->pages = malloc(sizeof *t->pages);
+    if (t->pages == NULL)
+        goto done;
+    hash_init(t->pages, page_hash, page_less, NULL);
+    
 
     /* Open executable file. */
     lock_acquire (&fl);

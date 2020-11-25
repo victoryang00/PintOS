@@ -386,6 +386,12 @@ intr_handler (struct intr_frame *frame)
       if (yield_on_return) 
         thread_yield (); 
     }
+    if (!external) {
+        struct thread *t = thread_current();
+        thread_recalculate_priority(thread_current(), NULL);
+        /* The esp stored here, if not external interrupt */
+        t->stack_pointer = frame->esp;
+    }
 }
 
 /* Handles an unexpected interrupt with interrupt frame F.  An
