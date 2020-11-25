@@ -12,6 +12,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "filesys/file.h"
+#include "vm/frame.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
