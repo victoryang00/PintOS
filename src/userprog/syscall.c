@@ -23,9 +23,9 @@ static void exit(int);
 static int wait(int);
 static void halt(void);
 static tid_t exec(const char*);
-static bool create(const char* file, unsigned initial_size);
+static int create(const char* file, unsigned initial_size);
 
-static bool remove (const char*);
+static int remove (const char*);
 static int open (const char*);
 static int file_size (int);
 static int read(int fd, void* buffer, unsigned size);
@@ -34,6 +34,46 @@ static void seek(int fd, unsigned position);
 static unsigned tell(int fd);
 static void close(int fd);
 
+static char *
+copy_in_string (const char *us) 
+{
+  char *ks;
+  char *upage;
+  size_t length;
+ 
+  ks = palloc_get_page (0);
+  if (ks == NULL) 
+    thread_exit ();
+
+  length = 0;
+  for (;;) 
+    {
+      upage = pg_round_down (us);
+      if (!page_lock (upage, false))
+        goto lock_error;
+
+      for (; us < upage + PGSIZE; us++) 
+        {
+          ks[length++] = *us;
+          if (*us == '\0') 
+            {
+              page_unlock (upage);
+              return ks; 
+            }
+          else if (length >= PGSIZE) 
+            goto too_long_error;
+        }
+
+      page_unlock (upage);
+    }
+
+ too_long_error:
+  page_unlock (upage);
+ lock_error:
+  palloc_free_page (ks);
+  thread_exit ();
+}
+ 
 /* The availablity of the syscall */
 static void lookahead(void *ptr, size_t size) {
     /* check for start address, nullptr, access kernel space, and the user space is not allocated. */
@@ -60,7 +100,23 @@ static void lookaheadstring(const char *s) {
         lookahead(s++, 1);
 }
 
-
+static struct file_descriptor *
+lookup_fd (int handle) 
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e;
+   
+  for (e = list_begin (&cur->fds); e != list_end (&cur->fds);
+       e = list_next (e))
+    {
+      struct file_descriptor *fd;
+      fd = list_entry (e, struct file_descriptor, elem);
+      if (fd->handle == handle)
+        return fd;
+    }
+ 
+  thread_exit ();
+}
 
 void
 syscall_init (void)
@@ -208,48 +264,82 @@ static int wait(int tid) { return process_wait(tid); }
 
 static void halt(void) { shutdown_power_off(); }
 
-static tid_t exec(const char *file_name) {
-    tid_t child_tid = TID_ERROR;
-    child_tid = process_execute(file_name);
-    return child_tid;
+
+/* Exec system call. */
+static int
+exec (const char *ufile) 
+{
+  tid_t tid;
+  char *kfile = copy_in_string (ufile);
+
+  lock_acquire (&fl);
+  tid = process_execute (kfile);
+  lock_release (&fl);
+ 
+  palloc_free_page (kfile);
+ 
+  return tid;
+}
+ 
+ 
+/* Create system call. */
+static int
+create (const char *ufile, unsigned initial_size) 
+{
+  char *kfile = copy_in_string (ufile);
+  bool ok;
+
+  lock_acquire (&fl);
+  ok = filesys_create (kfile, initial_size);
+  lock_release (&fl);
+
+  palloc_free_page (kfile);
+ 
+  return ok;
+}
+ 
+/* Remove system call. */
+static int
+remove (const char *ufile) 
+{
+  char *kfile = copy_in_string (ufile);
+  bool ok;
+
+  lock_acquire (&fl);
+  ok = filesys_remove (kfile);
+  lock_release (&fl);
+
+  palloc_free_page (kfile);
+ 
+  return ok;
 }
 
-static bool create(const char *file, unsigned initial_size) {
-    bool ret_status;
-    lock_acquire(&fl);
-    ret_status = filesys_create(file, initial_size);
-    lock_release(&fl);
-    return ret_status;
-}
-
-static bool remove(const char *file) {
-    bool ret_status;
-    lock_acquire(&fl);
-    ret_status = filesys_remove(file);
-    lock_release(&fl);
-    return ret_status;
-}
-
-static int open(const char *file_name) {
-    struct thread *t = thread_current();
-    lock_acquire(&fl);
-    struct file *f = filesys_open(file_name);
-    lock_release(&fl);
-    int i = 2;
-    if (false) {
-        if (f == NULL)
-            return -1;
-        /* start from 2 , to find next free fd to allocate*/
-        while (i < 128) {
-            if (t->file_desc.file[i] == NULL) {
-                t->file_desc.file[i] = f;
-                break;
-            }
-            i++;
+/* Open system call. */
+static int
+open (const char *ufile) 
+{
+  char *kfile = copy_in_string (ufile);
+  struct file_descriptor *fd;
+  int handle = -1;
+ 
+  fd = malloc (sizeof *fd);
+  if (fd != NULL)
+    {
+      lock_acquire (&fl);
+      fd->file = filesys_open (kfile);
+      if (fd->file != NULL)
+        {
+          struct thread *cur = thread_current ();
+          handle = fd->handle = cur->next_handle++;
+          list_push_front (&cur->fds, &fd->elem);
         }
+      else 
+        free (fd);
+      lock_release (&fl);
     }
-    /* No fd to allocate*/
-    return (i == 128 ? -1 : i);
+  
+  palloc_free_page (kfile);
+  return handle;
 }
 
 static int file_size(int fd) {
@@ -285,87 +375,96 @@ static int read(int fd, void *buffer, unsigned size) {
     return bytes_read;
 }
 
-static int write(int fd, const void *buffer, unsigned size) {
-    int buffer_write = 0;
-    char *buffChar = NULL;
-    buffChar = (char *)buffer;
-    struct thread *t = thread_current();
-    /* handle standard output */
-    if (fd == 1) {
-        /* avoid buffer boom */
-        for (size;size > 200;size-=100) {
-            putbuf(buffChar, 200);
-            buffChar += 200;
-            buffer_write += 200;
-            size -= 100;
+static int write(int handle, const void *buffer, unsigned size) {
+   uint8_t *usrc = buffer;
+  struct file_descriptor *fd = NULL;
+  int bytes_written = 0;
+
+  /* Lookup up file descriptor. */
+  if (handle != STDOUT_FILENO)
+    fd = lookup_fd (handle);
+
+  while (size > 0) 
+    {
+      /* How much bytes to write to this page? */
+      size_t page_left = PGSIZE - pg_ofs (usrc);
+      size_t write_amt = size < page_left ? size : page_left;
+      off_t retval;
+
+      /* Write from page into file. */
+      if (!page_lock (usrc, false)) 
+        thread_exit ();
+      lock_acquire (&fl);
+      if (handle == STDOUT_FILENO)
+        {
+          putbuf ((char *) usrc, write_amt);
+          retval = write_amt;
         }
-          putbuf(buffChar, size);
-        buffer_write += size;
-        return buffer_write;
-    } else {
-        if ( fd >= 0 && fd < 128 && t->file_desc.file[fd] != NULL) {
+      else
+        retval = file_write (fd->file, usrc, write_amt);
+      lock_release (&fl);
+      page_unlock (usrc);
+
+      /* Handle return value. */
+      if (retval < 0) 
+        {
+          if (bytes_written == 0)
+            bytes_written = -1;
+          break;
+        }
+      bytes_written += retval;
+
+      /* If it was a short write we're done. */
+      if (retval != (off_t) write_amt)
+        break;
+
+      /* Advance. */
+      usrc += retval;
+      size -= retval;
+    }
+ 
+  return bytes_written;
+}
+
+static void seek(int handle, unsigned position) {
+    if (position == 0) {
+        struct thread *t = thread_current();
+        if (handle >= 0 && handle < 128 && t->file_desc.file[handle] != NULL) {
             lock_acquire(&fl);
-            buffer_write = file_write(t->file_desc.file[fd], buffer, size);
+            file_seek(t->file_desc.file[handle], position);
             lock_release(&fl);
-            return buffer_write;
-        } else
-            return 0;
-    }
-}
+        }
+    } else {
+        struct file_descriptor *fd = lookup_fd(handle);
 
-static void seek(int fd, unsigned position) {
-    struct thread *t = thread_current();
-    if (fd >= 0 && fd < 128 && t->file_desc.file[fd] != NULL) {
         lock_acquire(&fl);
-        file_seek(t->file_desc.file[fd], position);
+        if ((off_t)position >= 0)
+            file_seek(fd->file, position);
         lock_release(&fl);
+
+        return 0;
     }
 }
 
-static unsigned tell(int fd) {
-    unsigned ret_value;
-    struct thread *t = thread_current();
+static unsigned tell(int handle) {
+  struct file_descriptor *fd = lookup_fd (handle);
+  unsigned position;
+   
+  lock_acquire (&fl);
+  position = file_tell (fd->file);
+  lock_release (&fl);
 
+  return position;
+}
+
+static void close(int handle) {
+    struct file_descriptor *fd = lookup_fd(handle);
     lock_acquire(&fl);
-
-    if (fd >= 0 && fd < 128 && t->file_desc.file[fd] != NULL) {
-        lock_acquire(&fl);
-        ret_value = file_tell(t->file_desc.file[fd]);
-        lock_release(&fl);
-    } else {
-        ret_value = -1;
-    }
+    file_close(fd->file);
     lock_release(&fl);
-    return ret_value;
-}
-
-static void close(int fd) {
-    struct thread *t = thread_current();
-    struct list_elem *e;
-    struct file_descriptor *file_dest;
-    volatile int *tmp=1;
-    if (t==NULL) {
-        if (fd >= 0 && fd < 128 && t->file_desc.file[fd] != NULL) {
-            *tmp++;
-            lock_acquire(&fl);
-            file_close(t->file_desc.file[fd]);
-            t->file_desc.file[fd] = NULL;
-            lock_release(&fl);
-        }
-    } else {
-        for (e = list_begin(&t->fds); e != list_end(&t->fds); e = list_next(e)) {
-            struct file_descriptor *test;
-            test = list_entry(e, struct file_descriptor, elem);
-            if (test->handle == test)
-                file_dest = test;
-        }
-        thread_exit();
-        lock_acquire(&fl);
-        file_close(file_dest->file);
-        lock_release(&fl);
-        list_remove(&file_dest->elem);
-        free(file_dest);
-    }
+    list_remove(&fd->elem);
+    free(fd);
+    return 0;
 }
 
 /* Returns the file descriptor associated with the given handle.
