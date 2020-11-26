@@ -353,26 +353,60 @@ static int file_size(int fd) {
     return 0;
 }
 
-static int read(int fd, void *buffer, unsigned size) {
-    int bytes_read = 0;
-    char *bufChar = NULL;
-    bufChar = (char *)buffer;
-    struct thread *t = thread_current();
-    /* handle standard input. */
-    if (fd == 0) {
-        while (size) {
-            input_getc();
-            size--;
-            bytes_read++;
+static int read(int handle, void *buffer, unsigned size) {
+    uint8_t *udst = buffer;
+  struct file_descriptor *fd;
+  int bytes_read = 0;
+
+  fd = lookup_fd (handle);
+  while (size > 0) 
+    {
+      /* How much to read into this page? */
+      size_t page_left = PGSIZE - pg_ofs (udst);
+      size_t read_amt = size < page_left ? size : page_left;
+      off_t retval;
+
+      /* Read from file into page. */
+      if (handle != STDIN_FILENO) 
+        {
+          if (!page_lock (udst, true)) 
+            thread_exit (); 
+          lock_acquire (&fl);
+          retval = file_read (fd->file, udst, read_amt);
+          lock_release (&fl);
+          page_unlock (udst);
         }
-    } else {
-        if (fd >= 0 && fd < 128 && t->file_desc.file[fd] != NULL) {
-            lock_acquire(&fl);
-            bytes_read = file_read(t->file_desc.file[fd], buffer, size);
-            lock_release(&fl);
+      else 
+        {
+          size_t i;
+          
+          for (i = 0; i < read_amt; i++) 
+            {
+              char c = input_getc ();
+              if (!page_lock (udst, true)) 
+                thread_exit ();
+              udst[i] = c;
+              page_unlock (udst);
+            }
+          bytes_read = read_amt;
         }
+      if (retval < 0)
+        {
+          if (bytes_read == 0)
+            bytes_read = -1; 
+          break;
+        }
+      bytes_read += retval; 
+      if (retval != (off_t) read_amt) 
+        {
+          break; 
+        }
+
+      udst += retval;
+      size -= retval;
     }
-    return bytes_read;
+   
+  return bytes_read;
 }
 
 static int write(int handle, const void *buffer, unsigned size) {
@@ -389,38 +423,40 @@ static int write(int handle, const void *buffer, unsigned size) {
       /* How much bytes to write to this page? */
       size_t page_left = PGSIZE - pg_ofs (usrc);
       size_t write_amt = size < page_left ? size : page_left;
-      off_t retval;
+      off_t result;
 
       /* Write from page into file. */
       if (!page_lock (usrc, false)) 
         thread_exit ();
       lock_acquire (&fl);
-      if (handle == STDOUT_FILENO)
-        {
+      if (handle) {
           putbuf ((char *) usrc, write_amt);
-          retval = write_amt;
+          result = write_amt;
         }
       else
-        retval = file_write (fd->file, usrc, write_amt);
+        result = file_write (fd->file, usrc, write_amt);
       lock_release (&fl);
       page_unlock (usrc);
 
       /* Handle return value. */
-      if (retval < 0) 
-        {
-          if (bytes_written == 0)
-            bytes_written = -1;
+
+      int s = bytes_written == 0;
+      int t =result < 0;
+      int st = s * 2 + t;
+
+      if (st == 3)
+          bytes_written = -1;
+      if (st == 3 || st == 2)
           break;
-        }
-      bytes_written += retval;
+      bytes_written += result;
 
       /* If it was a short write we're done. */
-      if (retval != (off_t) write_amt)
+      if (result != (off_t) write_amt)
         break;
 
       /* Advance. */
-      usrc += retval;
-      size -= retval;
+      usrc += result;
+      size -= result;
     }
  
   return bytes_written;
@@ -498,16 +534,7 @@ unmap(struct mapping *m) {
 }
 
 void mmap(int handle, void *addr){
-    struct file_descriptor *fd;
-    struct thread *cur = thread_current();
-    struct list_elem *e;
-
-    for (e = list_begin(&cur->fds); e != list_end(&cur->fds); e = list_next(e)) {
-        fd = list_entry(e, struct file_descriptor, elem);
-        if (fd->handle == handle)
-            break;
-    }
-    thread_exit();
+    struct file_descriptor *fd = lookup_fd(handle);
     struct mapping *m = malloc(sizeof *m);
     size_t offset;
     off_t length;
