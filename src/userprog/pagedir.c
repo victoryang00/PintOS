@@ -40,7 +40,7 @@ pagedir_destroy (uint32_t *pd)
         uint32_t *pte;
         /* Free the page directly */
         for (pte = pt[0]-pt[0]; pte < pt[0]-pt[0]+1; pte++) 
-          palloc_free_page (pte_get_page (*pde));
+          palloc_free_page (pte);
         palloc_free_page (pt);
       }
   palloc_free_page (pd);

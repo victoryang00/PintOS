@@ -110,7 +110,7 @@ thread_init (void)
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
-  thread_set_tid(initial_thread,0);
+  thread_set_tid(initial_thread,0);  
   initial_thread->status = THREAD_RUNNING;
 }
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -199,7 +199,7 @@ thread_create (const char *name, int priority,
   tid = t->tid;
 
   /* Prepare thread for first run by initializing its stack.
-     Do this atomically so intermediate values for the 'stack'
+     Do this atomically so intermediate values for the 'stack' 
      member cannot be observed. */
   old_level = intr_disable();
 
@@ -530,7 +530,6 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->fds);
   list_init(&t->mappings);
   t->next_handle = 2;
-  t->magic = THREAD_MAGIC;
 
   list_push_back(&all_list,&t->allelem);
 }
