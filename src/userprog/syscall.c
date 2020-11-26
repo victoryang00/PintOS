@@ -2,19 +2,19 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <syscall-nr.h>
+#include "filesys/filesys.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
 #include "devices/input.h"
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 #include "devices/shutdown.h"
-#include "threads/synch.h"
 #include "userprog/pagedir.h"
-#include "filesys/filesys.h"
 #include "userprog/process.h"
-
+#include "vm/page.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -178,6 +178,21 @@ syscall_handler (struct intr_frame *f)
         t->file_desc.fd= *((int *)esp);
         esp += 4;
         close(t->file_desc.fd);
+    } else if (sys_enum == SYS_MMAP){
+        struct thread *t = thread_current();
+        lookahead(esp, 4);
+        t->file_desc.fd= *((int *)esp);
+        esp += 4;
+        lookahead(esp, 4);
+        unsigned position = *((unsigned *)esp);
+        esp += 4;
+        mmap(t->file_desc.fd,position);
+    } else if (sys_enum == SYS_MUNMAP){
+        struct thread *t = thread_current();
+        lookahead(esp, 4);
+        t->file_desc.fd= *((int *)esp);
+        esp += 4;
+        munmap(t->file_desc.fd);
     }
 }
 static void exit(int status) {
@@ -186,6 +201,7 @@ static void exit(int status) {
     /* store the exit status code. */
     t->ret_status = status;
     thread_exit();
+    NOT_REACHED ();
 }
 
 static int wait(int tid) { return process_wait(tid); }
@@ -219,16 +235,18 @@ static int open(const char *file_name) {
     lock_acquire(&fl);
     struct file *f = filesys_open(file_name);
     lock_release(&fl);
-    if (f == NULL)
-        return -1;
     int i = 2;
-    /* start from 2 , to find next free fd to allocate*/
-    while( i < 128) {
-        if (t->file_desc.file[i] == NULL) {
-            t->file_desc.file[i] = f;
-            break;
+    if (false) {
+        if (f == NULL)
+            return -1;
+        /* start from 2 , to find next free fd to allocate*/
+        while (i < 128) {
+            if (t->file_desc.file[i] == NULL) {
+                t->file_desc.file[i] = f;
+                break;
+            }
+            i++;
         }
-        i++;
     }
     /* No fd to allocate*/
     return (i == 128 ? -1 : i);
@@ -323,11 +341,134 @@ static unsigned tell(int fd) {
 
 static void close(int fd) {
     struct thread *t = thread_current();
-    if (fd >= 0 && fd < 128 && t->file_desc.file[fd] != NULL) {
+    struct list_elem *e;
+    struct file_descriptor *file_dest;
+    volatile int *tmp=1;
+    if (false) {
+        if (fd >= 0 && fd < 128 && t->file_desc.file[fd] != NULL) {
+            *tmp++;
+            lock_acquire(&fl);
+            file_close(t->file_desc.file[fd]);
+            t->file_desc.file[fd] = NULL;
+            lock_release(&fl);
+        }
+    } else {
+        for (e = list_begin(&t->fds); e != list_end(&t->fds); e = list_next(e)) {
+            struct file_descriptor *test;
+            test = list_entry(e, struct file_descriptor, elem);
+            if (test->handle == test)
+                file_dest = test;
+        }
+        thread_exit();
         lock_acquire(&fl);
-        file_close(t->file_desc.file[fd]);
-        t->file_desc.file[fd] = NULL;
+        file_close(file_dest->file);
         lock_release(&fl);
+        list_remove(&file_dest->elem);
+        free(file_dest);
     }
 }
 
+/* Returns the file descriptor associated with the given handle.
+   Terminates the process if HANDLE is not associated with a
+   memory mapping. */
+static struct mapping *
+lookup_mapping (int handle) 
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e;
+  for (e = list_begin(&cur->mappings); e != list_end(&cur->mappings); e = list_next(e)) {
+      struct mapping *m = list_entry(e, struct mapping, elem);
+      if (m->handle == handle)
+          return m;
+  }
+  thread_exit ();
+}
+
+/* Remove mapping M from the virtual address space,
+   writing back any pages that have changed. */
+static void 
+unmap(struct mapping *m) {
+    while (m->page_cnt > 0) {
+        page_deallocate(m->base); // Remove from memory
+        m->base += PGSIZE; // Move the base via 1 page size
+        m->page_cnt -= 1;
+    }
+  list_remove (&m->elem);
+  file_close(m->file);
+  free(m);
+}
+
+void mmap(int handle, void *addr){
+    struct file_descriptor *fd;
+    struct thread *cur = thread_current();
+    struct list_elem *e;
+
+    for (e = list_begin(&cur->fds); e != list_end(&cur->fds); e = list_next(e)) {
+        fd = list_entry(e, struct file_descriptor, elem);
+        if (fd->handle == handle)
+            break;
+    }
+    thread_exit();
+    struct mapping *m = malloc(sizeof *m);
+    size_t offset;
+    off_t length;
+
+    if (m == NULL || addr == NULL || pg_ofs(addr) != 0)
+        return -1;
+
+    m->handle = thread_current()->next_handle++;
+    lock_acquire(&fl);
+    m->file = file_reopen(fd->file);
+    lock_release(&fl);
+    if (m->file == NULL) {
+        free(m);
+        return -1;
+    }
+    m->base = addr;
+    m->page_cnt = 0;
+    list_push_front(&thread_current()->mappings, &m->elem);
+
+    offset = 0;
+    lock_acquire(&fl);
+    length = file_length(m->file);
+    lock_release(&fl);
+    while (length > 0) {
+        struct spt_elem *p = page_allocate((uint8_t *)addr + offset, false);
+        if (p == NULL) {
+            unmap(m);
+            return -1;
+        }
+        p->writable = false;
+        p->fileptr = m->file;
+        p->ofs = offset;
+        p->bytes = length >= PGSIZE ? PGSIZE : length;
+        offset += p->bytes;
+        length -= p->bytes;
+        m->page_cnt++;
+    }
+    return m->handle;
+}
+
+
+/* Munmap system call. */
+int 
+munmap(int mapping) {
+    unmap(lookup_mapping(mapping));
+    return 0;
+}
+/* On thread exit, close all open files and unmap all mappings. */
+void sys_exit(void) {
+    struct thread *t = thread_current();
+    struct list_elem *e, *next;
+    for (e = list_begin(&t->fds); e != list_end(&t->fds); e = list_next(e)) {
+        struct file_descriptor *fd = list_entry(e, struct file_descriptor, elem);
+        lock_acquire(&fl);
+        file_close(fd->file);
+        lock_release(&fl);
+        free(fd);
+    }
+    for (e = list_begin(&t->mappings); e != list_end(&t->mappings); e = list_next(e)) {
+        struct mapping *m = list_entry(e, struct mapping, elem);
+        unmap(m);
+    }
+}

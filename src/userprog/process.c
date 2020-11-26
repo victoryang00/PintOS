@@ -345,7 +345,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     if (t->pages == NULL)
         goto done;
     hash_init(t->pages, page_hash, page_less, NULL);
-    
+
 
     /* Open executable file. */
     lock_acquire (&fl);
@@ -533,28 +533,20 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
         /* Get a page of memory. */
-        uint8_t *kpage = palloc_get_page (PAL_USER);
+        struct spt_elem *kpage = page_allocate (upage,!writable);
         if (kpage == NULL)
             return false;
-
-        /* Load this page. */
-        if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
+        if (page_read_bytes > 0) 
         {
-            palloc_free_page (kpage);
-            return false;
-        }
-        memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-        /* Add the page to the process's address space. */
-        if (!install_page (upage, kpage, writable))
-        {
-            palloc_free_page (kpage);
-            return false;
+          kpage->fileptr = file;
+          kpage->ofs = ofs;
+          kpage->bytes = page_read_bytes;
         }
 
         /* Advance. */
         read_bytes -= page_read_bytes;
         zero_bytes -= page_zero_bytes;
+        ofs += page_read_bytes;
         upage += PGSIZE;
     }
     return true;

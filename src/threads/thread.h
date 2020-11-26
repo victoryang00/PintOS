@@ -127,6 +127,10 @@ struct thread
     void *stack_pointer;                /* The variable to store the thread's esp. */
     struct hash *pages;                 /* The variable to store the page table. */
     struct list mapped_file;            /* The memory mapped file. */
+    struct list fds;                    /* List of file descriptors. */
+    struct list mappings;               /* Memory-mapped files. */
+    int next_handle;                    /* For next handle to deal with the problem */
+    
 
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
