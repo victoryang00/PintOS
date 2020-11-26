@@ -8,6 +8,7 @@ struct frame {
     struct spt_elem *page; /* Mapped process page, if any. */
     struct lock lock; /* Prevent simultaneous access. */
     void *base; /* Kernel virtual base address. */
+    struct list_elem frame_elem;
 };
 
 void frame_init (void);

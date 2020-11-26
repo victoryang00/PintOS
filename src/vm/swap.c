@@ -1,7 +1,7 @@
+#include "vm/swap.h"
 #include <bitmap.h>
 #include <debug.h>
 #include <stdio.h>
-#include "vm/swap.h"
 #include "vm/frame.h"
 #include "vm/page.h"
 #include "threads/synch.h"
@@ -16,13 +16,9 @@ void
 swap_init (void) 
 {
   device = block_get_role (BLOCK_SWAP);
-  if (device == NULL) {
-      printf ("no swap DEVICEs\n");
-      swapped_location = bitmap_create (0);
-    }
-  else
-    swapped_location = bitmap_create (block_size (device)
+      swapped_location =  (device == NULL) ?bitmap_create (0):bitmap_create (block_size (device)
                                  / PGSIZE * BLOCK_SECTOR_SIZE);
+  
   if (swapped_location == NULL)
     PANIC ("SB swap bitmap");
   lock_init (&swap_lock);

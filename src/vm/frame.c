@@ -13,6 +13,7 @@ static struct frame *frames;
 static uint32_t count;
 static struct lock scan_lock;
 static uint32_t handle;
+static struct list frame_list;
 
 /* Initialize the frame manager. */
 void
@@ -37,27 +38,25 @@ frame_init(void){
 struct frame *
 frame_try_alloc (struct spt_elem *page) 
 {
-    uint32_t i = UINT32_MAX;
-    lock_acquire(&scan_lock);
+  size_t i = 0;
 
-    /* Find a free frame. */
-    while (i > UINT32_MAX-count) {
-        struct frame *f = &frames[i];
-        if (lock_try_acquire(&f->lock)) {
-            if (f->page == NULL) {
-                f->page = page;
-                lock_release(&scan_lock);
-                return f;
-            }
-            lock_release(&f->lock);
-            i--;
-        } else {
-            i--;
-            continue;
-        }
-    }
+  lock_acquire (&scan_lock);
+
+  /* Find a free frame. */
+  while (i < count) {
+      struct frame *f = &frames[i];
+      if (!lock_try_acquire(&f->lock))
+          continue;
+      if (f->page == NULL) {
+          f->page = page;
+          lock_release(&scan_lock);
+          return f;
+      }
+      lock_release(&f->lock);
+      i++;
+  }
     i = 0;
-  /* No free frame.  Find a frame to evict. */
+    /* No free frame.  Find a frame to evict. */
     while (i < count * 2) {
         struct frame *f = &frames[handle];
         if (++handle >= count)
@@ -93,7 +92,7 @@ frame_try_alloc (struct spt_elem *page)
     }
     (&scan_lock)->holder = NULL;
     sema_up(&(&scan_lock)->semaphore);
-    return NULL;
+  return NULL;
 }
 
 /* Tries really hard to allocate and lock a frame for PAGE.
@@ -103,7 +102,7 @@ frame_alloc (struct spt_elem *page)
 {
   uint32_t i=UINT32_MAX;
 
-   while ( i < UINT32_MAX-3) {
+   while ( i > UINT32_MAX-3) {
       struct frame *f = frame_try_alloc(page);
       if (f != NULL&&lock_held_by_current_thread(&f->lock)) 
           return f;
@@ -151,4 +150,16 @@ frame_unlock (struct frame *f)
 {
   (&f->lock)->holder = NULL;
   sema_up(&(&f->lock)->semaphore);
+}
+
+static struct frame *get_frame_by_paddr(void *paddr) {
+  struct list_elem *e;
+
+  for (e = list_begin(&frame_list); e != list_end (&frame_list); e = list_next (e)) {
+    struct frame *f = list_entry (e, struct frame, frame_elem);
+    if (f->base == paddr) {
+      return f;
+    }
+  }
+  return NULL;
 }
