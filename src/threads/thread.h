@@ -110,8 +110,9 @@ struct thread
     struct list child_list; /* List element for children processes list. */
     struct list_elem childelem;         /* List element for children processes list. */
     struct list fd_list; /* List of opened file. */
-    struct semaphore ltem,tsem,wsem; /* The semaphore used to notify the parent process whether the child process is loaded successfully. */
+    struct semaphore ltem,tsem; /* The semaphore used to notify the parent process whether the child process is loaded successfully. */
 
+    
     /* Deprecated */
     struct list_elem slpelem;           /* the element in sleep_list. */
     int64_t sleep_ticks;                /* the time to wait */
@@ -130,8 +131,21 @@ struct thread
     struct list fds;                    /* List of file descriptors. */
     struct list mappings;               /* Memory-mapped files. */
     int next_handle;                    /* For next handle to deal with the problem */
-    
+    struct wsem * wsem;                 /* This process's completion status, to a smaller granularity. */
 
+   /* Tracks the completion of a process.
+      Reference held by both the parent, in its `children' list,
+      and by the child, in its `wait_status' pointer. */
+    struct wsem {
+        struct list_elem elem;          /* `children' list element. */
+        struct lock lock;               /* Protects ref_cnt. */
+        int ref_cnt;                    /* 2=child and parent both alive,
+                                          1=either child or parent alive,
+                                          0=child and parent both dead. */
+        tid_t tid;                      /* Child thread id. */
+        int exit_code;                  /* Child exit code, if dead. */
+        struct semaphore dead;          /* 1=child alive, 0=child dead. */
+    };
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 

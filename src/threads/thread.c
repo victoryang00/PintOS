@@ -110,8 +110,8 @@ thread_init (void)
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
+  thread_set_tid(initial_thread,0);
   initial_thread->status = THREAD_RUNNING;
-  initial_thread->tid = allocate_tid ();
 }
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
@@ -195,7 +195,8 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  tid = t->tid = allocate_tid ();
+  thread_set_tid(t,allocate_tid());
+  tid = t->tid;
 
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack'
@@ -302,7 +303,7 @@ void
 thread_exit (void) 
 {
   ASSERT (!intr_context ());
-
+  syscall_exit();
 #ifdef USERPROG
   process_exit ();
 #endif
@@ -498,21 +499,39 @@ init_thread (struct thread *t, const char *name, int priority)
 
   t->magic = THREAD_MAGIC;
   
-  /* User Process. */
-  t->awaited=false;
-  t->elffile=NULL;
-  sema_init(&t->wsem,0);
-  sema_init(&t->ltem,0);
-  sema_init(&t->tsem,0);
+  /* User Process. Deprecated */
+  // t->awaited=false;
+  // t->elffile=NULL;
+  // sema_init(&t->wsem,0);
+  // sema_init(&t->ltem,0);
+  // sema_init(&t->tsem,0);
+  // t->pagedir = NULL;
+  // t->pages = NULL;
+  // list_init (&t->fds);
+  // list_init (&t->mappings);
+  // t->next_handle = 2;
 
-  list_init(&t->child_list);
+  // list_init(&t->child_list);
   
-  for (int i = 0; i < 128; i++) {
-      t->file_desc.file[i] = NULL;
-      t->file_desc.fd = i;
-  }
+  // for (int i = 0; i < 128; i++) {
+  //     t->file_desc.file[i] = NULL;
+  //     t->file_desc.fd = i;
+  // }
+  // t->ret_status = -1;
+  // t->load_status = 1;
+
   t->ret_status = -1;
-  t->load_status = 1;
+  t->wsem = NULL;
+  list_init(&t->child_list);
+  sema_init(&t->tsem, 0);
+  t->pagedir = NULL;
+  t->pages = NULL;
+  t->elffile = NULL;
+  list_init(&t->fds);
+  list_init(&t->mappings);
+  t->next_handle = 2;
+  t->magic = THREAD_MAGIC;
+
   list_push_back(&all_list,&t->allelem);
 }
 

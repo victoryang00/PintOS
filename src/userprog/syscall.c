@@ -344,7 +344,7 @@ static void close(int fd) {
     struct list_elem *e;
     struct file_descriptor *file_dest;
     volatile int *tmp=1;
-    if (false) {
+    if (t==NULL) {
         if (fd >= 0 && fd < 128 && t->file_desc.file[fd] != NULL) {
             *tmp++;
             lock_acquire(&fl);
@@ -457,18 +457,16 @@ munmap(int mapping) {
     return 0;
 }
 /* On thread exit, close all open files and unmap all mappings. */
-void sys_exit(void) {
-    struct thread *t = thread_current();
+void syscall_exit(void) {
+    struct thread *cur = thread_current();
     struct list_elem *e, *next;
-    for (e = list_begin(&t->fds); e != list_end(&t->fds); e = list_next(e)) {
+
+    for (e = list_begin(&cur->fds); e != list_end(&cur->fds); e = next) {
         struct file_descriptor *fd = list_entry(e, struct file_descriptor, elem);
+        next = list_next(e);
         lock_acquire(&fl);
         file_close(fd->file);
         lock_release(&fl);
         free(fd);
-    }
-    for (e = list_begin(&t->mappings); e != list_end(&t->mappings); e = list_next(e)) {
-        struct mapping *m = list_entry(e, struct mapping, elem);
-        unmap(m);
     }
 }

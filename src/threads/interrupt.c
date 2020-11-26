@@ -359,7 +359,9 @@ intr_handler (struct intr_frame *frame)
 
       in_external_intr = true;
       yield_on_return = false;
-    }
+    } else
+      thread_current()->stack_pointer = frame ->esp;
+    
 
   /* Invoke the interrupt's handler. */
   handler = intr_handlers[frame->vec_no];
@@ -385,12 +387,6 @@ intr_handler (struct intr_frame *frame)
 
       if (yield_on_return) 
         thread_yield (); 
-    }
-    if (!external) {
-        struct thread *t = thread_current();
-        thread_recalculate_priority(thread_current(), NULL);
-        /* The esp stored here, if not external interrupt */
-        t->stack_pointer = frame->esp;
     }
 }
 

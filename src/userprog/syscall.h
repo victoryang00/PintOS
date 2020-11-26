@@ -7,7 +7,7 @@ void syscall_init (void);
 typedef int pid_t;
 struct openfile* getFile(int);
 struct lock fl;
-void sys_exit(void);
+void syscall_exit(void);
 
 /* A file descriptor, for binding a file handle to a file. */
 struct file_descriptor {
