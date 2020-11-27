@@ -17,100 +17,110 @@ static struct list frame_list;
 
 /* Initialize the frame manager. */
 void
-frame_init(void){
-    void *base;
-    lock_init(&scan_lock);
-    frames = malloc(sizeof *frames * init_ram_pages);
-    if (frames == NULL)
-        PANIC("OOM Frame");
-    base=palloc_get_page(PAL_USER);
-    for (;(base=palloc_get_page(PAL_USER))!=NULL;){
-        struct frame *f = &frames[count++];
-        lock_init(&f->lock);
-        f->base = base;
-        f->page = NULL;
+frame_init (void) 
+{
+  void *base;
+
+  lock_init (&scan_lock);
+  
+  frames = malloc (sizeof *frames * init_ram_pages);
+  if (frames == NULL)
+    PANIC ("out of memory allocating page frames");
+
+  while ((base = palloc_get_page (PAL_USER)) != NULL) 
+    {
+      struct frame *f = &frames[count++];
+      lock_init (&f->lock);
+      f->base = base;
+      f->page = NULL;
     }
 }
 
-
 /* Tries to allocate and lock a frame for PAGE.
    Returns the frame if successful, false on failure. */
-struct frame *
-frame_try_alloc (struct spt_elem *page) 
+static struct frame *
+try_frame_alloc_and_lock (struct spt_elem *page) 
 {
-  size_t i = 0;
+  size_t i;
 
   lock_acquire (&scan_lock);
 
   /* Find a free frame. */
-  while (i < count) {
+  for (i = 0; i < count; i++)
+    {
       struct frame *f = &frames[i];
-      if (!lock_try_acquire(&f->lock))
-          continue;
-      if (f->page == NULL) {
+      if (!lock_try_acquire (&f->lock))
+        continue;
+      if (f->page == NULL) 
+        {
           f->page = page;
-          lock_release(&scan_lock);
+          lock_release (&scan_lock);
           return f;
-      }
-      lock_release(&f->lock);
-      i++;
-  }
-    i = 0;
-    /* No free frame.  Find a frame to evict. */
-    while (i < count * 2) {
-        struct frame *f = &frames[handle];
-        if (++handle >= count)
-            handle = 0;
-        if (lock_try_acquire(&f->lock)) {
-            if (f->page == NULL) {
-                f->page = page;
-                (&scan_lock)->holder = NULL;
-                sema_up(&(&scan_lock)->semaphore);
-                return f;
-            }
-            if (page_get_recently(f->page)) {
-                (&f->lock)->holder = NULL;
-                sema_up(&(&f->lock)->semaphore);
-                ++i;
-                continue;
-            }
-            (&scan_lock)->holder = NULL;
-            sema_up(&(&scan_lock)->semaphore);
-            /* Evict this frame. */
-            if (!page_out(f->page)) {
-                (&f->lock)->holder = NULL;
-                sema_up(&(&f->lock)->semaphore);
-                return NULL;
-            }
-            f->page = page;
-            return f;
-            i++;
-        } else {
-            ++i;
-            continue;
-        }
+        } 
+      lock_release (&f->lock);
     }
-    (&scan_lock)->holder = NULL;
-    sema_up(&(&scan_lock)->semaphore);
+
+  /* No free frame.  Find a frame to evict. */
+  for (i = 0; i < count * 2; i++) 
+    {
+      /* Get a frame. */
+      struct frame *f = &frames[handle];
+      if (++handle >= count)
+        handle = 0;
+
+      if (!lock_try_acquire (&f->lock))
+        continue;
+
+      if (f->page == NULL) 
+        {
+          f->page = page;
+          lock_release (&scan_lock);
+          return f;
+        } 
+
+      if (page_get_recently (f->page)) 
+        {
+          lock_release (&f->lock);
+          continue;
+        }
+          
+      lock_release (&scan_lock);
+      
+      /* Evict this frame. */
+      if (!page_out (f->page))
+        {
+          lock_release (&f->lock);
+          return NULL;
+        }
+
+      f->page = page;
+      return f;
+    }
+
+  lock_release (&scan_lock);
   return NULL;
 }
+
 
 /* Tries really hard to allocate and lock a frame for PAGE.
    Returns the frame if successful, false on failure. */
 struct frame *
 frame_alloc (struct spt_elem *page) 
 {
-  uint32_t i=UINT32_MAX;
+  size_t try;
 
-   while ( i > UINT32_MAX-3) {
-      struct frame *f = frame_try_alloc(page);
-      if (f != NULL&&lock_held_by_current_thread(&f->lock)) 
-          return f;
-      timer_msleep(998);
-      i--;
-  }
+  for (try = 0; try < 3; try++) 
+    {
+      struct frame *f = try_frame_alloc_and_lock (page);
+      if (f != NULL) 
+        {
+          ASSERT (lock_held_by_current_thread (&f->lock));
+          return f; 
+        }
+      timer_msleep (1000);
+    }
 
-  return (void *)0;
+  return NULL;
 }
 
 /* Locks P's frame into memory, if it has one.
@@ -120,8 +130,9 @@ frame_lock (struct spt_elem *p)
 {
   /* A frame can be asynchronously removed, but never inserted. */
   struct frame *f = p->frame;
-  while (f != NULL) {
-      lock_acquire(&f->lock);
+  while (f != NULL) 
+    {
+      lock_acquire (&f->lock);
       if (f == p->frame) {
           thread_set_nice(0);
       } else {
@@ -129,7 +140,7 @@ frame_lock (struct spt_elem *p)
           sema_up(&(&f->lock)->semaphore);
       }
       break;
-  }
+    }
 }
 
 /* Releases frame F for use by another page.
@@ -137,9 +148,9 @@ frame_lock (struct spt_elem *p)
    Any data in F is lost. */
 void
 frame_free (struct frame *f)
-{         
+{
   f->page = NULL;
-  (&f->lock)->holder = NULL;
+    (&f->lock)->holder = NULL;
   sema_up(&(&f->lock)->semaphore);
 }
 
