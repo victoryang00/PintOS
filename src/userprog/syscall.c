@@ -382,10 +382,9 @@ read (int handle, void *udst_, unsigned size)
       size_t page_left = PGSIZE - pg_ofs (udst);
       size_t read_amt = size < page_left ? size : page_left;
       off_t retval;
-      size_t i = 0;
 
       /* Read from file into page. */
-        if (handle != STDIN_FILENO) 
+      if (handle != STDIN_FILENO) 
         {
           if (!page_lock(udst, true))
               thread_exit();
@@ -396,8 +395,9 @@ read (int handle, void *udst_, unsigned size)
         }
       else 
         {
+          size_t i;
           
-          while ( i < read_amt) 
+          for (i = 0; i < read_amt; i++) 
             {
               char c = input_getc ();
               if (!page_lock (udst, true)) 
@@ -410,13 +410,12 @@ read (int handle, void *udst_, unsigned size)
       if (retval < 0)
         {
           if (bytes_read == 0)
-            bytes_read = -1; 
-          break;
+            return -1;
         }
       bytes_read += retval; 
       if (retval != (off_t) read_amt) 
         {
-          break; 
+          size=-1;
         }
 
       udst += retval;
@@ -425,7 +424,8 @@ read (int handle, void *udst_, unsigned size)
    
   return bytes_read;
 }
-
+ 
+/* Write system call. */
 static int write(int handle, void *usrc_, unsigned size) {
     uint8_t *usrc = usrc_;
     struct file_descriptor *fd = NULL;
@@ -448,18 +448,16 @@ static int write(int handle, void *usrc_, unsigned size) {
         if (handle == STDOUT_FILENO) {
             putbuf((char *)usrc, write_amt);
             retval = write_amt;
-        }
-      else
-        retval = file_write (fd->file, usrc, write_amt);
-      lock_release (&fl);
-      page_unlock (usrc);
+        } else
+            retval = file_write(fd->file, usrc, write_amt);
+        lock_release(&fl);
+        page_unlock(usrc);
 
-      /* Handle return value. */
-      if (retval < 0) 
-        {
-          if (bytes_written == 0)
-            bytes_written = -1;
-          break;
+        /* Handle return value. */
+        if (retval < 0) {
+            if (bytes_written == 0)
+                bytes_written = -1;
+            break;
         }
       bytes_written += retval;
 
@@ -470,7 +468,7 @@ static int write(int handle, void *usrc_, unsigned size) {
       /* Advance. */
       usrc += retval;
       size -= retval;
-    }
+  }
 
   return bytes_written;
 }
@@ -494,7 +492,7 @@ static int seek(int handle, unsigned position) {
         return 0;
     }
 }
-
+ 
 /* Tell system call. */
 static int
 tell (int handle) 
@@ -542,20 +540,6 @@ lookup_mapping (int handle)
   thread_exit ();
 }
 
-/* Remove mapping M from the virtual address space,
-   writing back any pages that have changed. */
-static void
-unmap (struct mapping *m) 
-{
-  while(m->page_cnt > 0){ 
-    page_deallocate (m->base); //Remove from memory
-    m->base += PGSIZE; //Move the base via 1 page size
-    m->page_cnt -= 1;
-  }
-  list_remove (&m->elem);
-  file_close(m->file);
-  free(m);
-}
  
 /* Mmap system call. */
 static int
@@ -591,7 +575,14 @@ mmap (int handle, void *addr)
       struct spt_elem *p = page_allocate ((uint8_t *) addr + offset, false);
       if (p == NULL)
         {
-          unmap (m);
+          while (m->page_cnt > 0) {
+              page_deallocate(m->base); // Remove from memory
+              m->base += PGSIZE; // Move the base via 1 page size
+              m->page_cnt -= 1;
+          }
+          list_remove(&m->elem);
+          file_close(m->file);
+          free(m);
           return -1;
         }
       p->writable = false;
@@ -607,9 +598,18 @@ mmap (int handle, void *addr)
 
 
 /* Munmap system call. */
-static int munmap(int mapping) {
-    unmap(lookup_mapping(mapping));
-    return 0;
+static int
+munmap (int mapping) 
+{
+    while(lookup_mapping (mapping)->page_cnt > 0){ 
+    page_deallocate (lookup_mapping (mapping)->base); 
+    lookup_mapping (mapping)->base += PGSIZE; 
+    lookup_mapping (mapping)->page_cnt -= 1;
+  }
+  list_remove (&lookup_mapping (mapping)->elem);
+  file_close(lookup_mapping (mapping)->file);
+  free(lookup_mapping (mapping));
+ return 0;
 }
 
 /* On thread exit, close all open files and unmap all mappings. */
