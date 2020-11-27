@@ -384,7 +384,7 @@ read (int handle, void *udst_, unsigned size)
       off_t retval;
 
       /* Read from file into page. */
-      if (handle != STDIN_FILENO) 
+     if (handle != STDIN_FILENO) 
         {
           if (!page_lock(udst, true))
               thread_exit();
@@ -472,27 +472,19 @@ static int write(int handle, void *usrc_, unsigned size) {
 
   return bytes_written;
 }
+ 
 
 static int seek(int handle, unsigned position) {
-    if (position == 0) {
-        struct thread *t = thread_current();
-        if (handle >= 0 && handle < 128 && t->file_desc.file[handle] != NULL) {
-            lock_acquire(&fl);
-            file_seek(t->file_desc.file[handle], position);
-            lock_release(&fl);
-        }
-    } else {
-        struct file_descriptor *fd = lookup_fd(handle);
+    struct file_descriptor *fd = lookup_fd(handle);
 
-        lock_acquire(&fl);
-        if ((off_t)position >= 0)
-            file_seek(fd->file, position);
-        lock_release(&fl);
+    lock_acquire(&fl);
+    if ((off_t)position >= 0)
+        file_seek(fd->file, position);
+    lock_release(&fl);
 
-        return 0;
-    }
+    return 0;
 }
- 
+
 /* Tell system call. */
 static int
 tell (int handle) 
