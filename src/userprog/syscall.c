@@ -193,49 +193,52 @@ syscall_handler (struct intr_frame *f)
 
 }
  
-/* Creates a copy of user string US in kernel memory
-   and returns it as a page that must be freed with
-   palloc_free_page().
-   Truncates the string at PGSIZE bytes in size.
-   Call thread_exit() if any of the user accesses are invalid. */
 static char *
-copy_in_string (const char *us) 
+get_string (const char *us) 
 {
   char *ks;
   char *upage;
   size_t length;
  
   ks = palloc_get_page (0);
-  if (ks == NULL) 
+  int kpages = ks == NULL;
+  switch (5*kpages){
+    case 5:
     thread_exit ();
-
+  }
   length = 0;
-  for (;;) 
+  while(1)
     {
       upage = pg_round_down (us);
-      if (!page_lock (upage, false))
-        goto lock_error;
+      int get=!page_lock(upage, false);
+      switch (get) {
+      case 1:
+          palloc_free_page(ks);
+          thread_exit();
+      }
 
-      for (; us < upage + PGSIZE; us++) 
+      while (us < upage + PGSIZE) 
         {
           ks[length++] = *us;
-          if (*us == '\0') 
-            {
-              page_unlock (upage);
-              return ks; 
-            }
-          else if (length >= PGSIZE) 
-            goto too_long_error;
-        }
+          int test = *us == '\0';
+          int sb =length >= PGSIZE;
+          int getid= test*2+sb;
+          switch (getid) {
+          case 2:
+              page_unlock(upage);
+              return ks;
+          case 1:
+              page_unlock(upage);
+              palloc_free_page(ks);
+              thread_exit();
+          }
+          us++;
+      }
 
       page_unlock (upage);
     }
 
- too_long_error:
-  page_unlock (upage);
- lock_error:
-  palloc_free_page (ks);
-  thread_exit ();
+
 }
 
 
@@ -254,7 +257,7 @@ static int
 exec (const char *ufile) 
 {
   tid_t tid;
-  char *kfile = copy_in_string (ufile);
+  char *kfile = get_string (ufile);
 
   lock_acquire (&fl);
   tid = process_execute (kfile);
@@ -276,7 +279,7 @@ wait (tid_t child)
 static int
 create (const char *ufile, unsigned initial_size) 
 {
-  char *kfile = copy_in_string (ufile);
+  char *kfile = get_string (ufile);
   bool ok;
 
   lock_acquire (&fl);
@@ -292,7 +295,7 @@ create (const char *ufile, unsigned initial_size)
 static int
 remove (const char *ufile) 
 {
-  char *kfile = copy_in_string (ufile);
+  char *kfile = get_string (ufile);
   bool ok;
 
   lock_acquire (&fl);
@@ -308,7 +311,7 @@ remove (const char *ufile)
 static int
 open (const char *ufile) 
 {
-  char *kfile = copy_in_string (ufile);
+  char *kfile = get_string (ufile);
   struct file_descriptor *fd;
   int handle = -1;
  
@@ -336,21 +339,20 @@ open (const char *ufile)
    Terminates the process if HANDLE is not associated with an
    open file. */
 static struct file_descriptor *
-lookup_fd (int handle) 
+get_fd (int handle) 
 {
   struct thread *cur = thread_current ();
-  struct list_elem *e;
-   
-  for (e = list_begin (&cur->fds); e != list_end (&cur->fds);
-       e = list_next (e))
-    {
+  struct list_elem *e = list_begin (&cur->fds);
+
+  while (e != list_end(&cur->fds)) {
       struct file_descriptor *fd;
-      fd = list_entry (e, struct file_descriptor, elem);
+      fd = list_entry(e, struct file_descriptor, elem);
       if (fd->handle == handle)
-        return fd;
-    }
- 
+          return fd;
+  }
+
   thread_exit ();
+  e = list_next (e);
 }
  
 /* Filesize system call. */
@@ -375,57 +377,100 @@ read (int handle, void *udst_, unsigned size)
   struct file_descriptor *fd;
   int bytes_read = 0;
 
-  fd = lookup_fd (handle);
-  while (size > 0) 
+  fd = get_fd (handle);
+  for (;size > 0;) 
     {
       /* How much to read into this page? */
       size_t page_left = PGSIZE - pg_ofs (udst);
       size_t read_amt = size < page_left ? size : page_left;
       off_t retval;
-
+      int test = handle != STDIN_FILENO;
+      int sb = !page_lock(udst, true);
+      int sb1 = retval < 0;
+      int sb2 = bytes_read == 0;
+      int sb3 = retval != (off_t)read_amt;
       /* Read from file into page. */
-     if (handle != STDIN_FILENO) 
-        {
-          if (!page_lock(udst, true))
-              thread_exit();
+          size_t i = 0;
+      int identifier = sb * 16 + sb * 8 + sb1 * 4 + sb2 * 2 + sb3;
+      switch (identifier) {
+      case 31:
+      case 30:
+      case 29:
+      case 28:
+      case 27:
+      case 26:
+      case 25:
+      case 24:
+          thread_exit();
           lock_acquire(&fl);
           retval = file_read(fd->file, udst, read_amt);
           lock_release(&fl);
           page_unlock(udst);
-        }
-      else 
-        {
-          size_t i;
-          
-          for (i = 0; i < read_amt; i++) 
-            {
-              char c = input_getc ();
-              if (!page_lock (udst, true)) 
-                thread_exit ();
+          break;
+      case 23:
+      case 22:
+      case 21:
+      case 20:
+      case 19:
+      case 18:
+      case 17:
+      case 16:
+          lock_acquire(&fl);
+          retval = file_read(fd->file, udst, read_amt);
+          lock_release(&fl);
+          page_unlock(udst);
+          break;
+      case 15:
+      case 14:
+      case 13:
+      case 12:
+      case 11:
+      case 10:
+      case 9:
+      case 8:
+      case 7:
+      case 6:
+      case 5:
+      case 4:
+      case 3:
+      case 2:
+      case 1:
+      case 0:
+
+          while (i < read_amt) {
+              char c = input_getc();
+              switch(sb) {
+              case 1:
+                  thread_exit();
+                  break;
+              }
               udst[i] = c;
-              page_unlock (udst);
-            }
+              page_unlock(udst);
+          }
           bytes_read = read_amt;
-        }
-      if (retval < 0)
-        {
-          if (bytes_read == 0)
-            return -1;
-        }
-      bytes_read += retval; 
-      if (retval != (off_t) read_amt) 
-        {
-          size=-1;
-        }
+          i++;
+      }
+      int id = sb1 * 2 + sb2;
+      switch (id) {
+      case 3:
+          return -1;
+      }
+
+      bytes_read += retval;
+      switch (sb3 > 0) {
+      case true:
+          size = -1;
+          break;
+      }
 
       udst += retval;
       size -= retval;
-    }
-   
+  }
+
   return bytes_read;
 }
  
-/* Write system call. */
+//* Write system call. */
 static int write(int handle, void *usrc_, unsigned size) {
     uint8_t *usrc = usrc_;
     struct file_descriptor *fd = NULL;
@@ -433,31 +478,47 @@ static int write(int handle, void *usrc_, unsigned size) {
 
     /* Lookup up file descriptor. */
     if (handle != STDOUT_FILENO)
-        fd = lookup_fd(handle);
-
+        fd = get_fd(handle);
+    int test=!page_lock(usrc, false);
+    int sb1 =handle == STDOUT_FILENO;
+    int sb3=bytes_written == 0;
     while (size > 0) {
         /* How much bytes to write to this page? */
         size_t page_left = PGSIZE - pg_ofs(usrc);
         size_t write_amt = size < page_left ? size : page_left;
         off_t retval;
+        int sb2 = retval < 0;
+        int id = sb2 * 2 + sb3;
 
         /* Write from page into file. */
-        if (!page_lock(usrc, false))
+        switch (test) {
+        case 1:
             thread_exit();
+            break;
+        }
+
         lock_acquire(&fl);
-        if (handle == STDOUT_FILENO) {
+
+        switch (sb1) {
+        case 1:
             putbuf((char *)usrc, write_amt);
             retval = write_amt;
-        } else
+            break;
+        case 0:
             retval = file_write(fd->file, usrc, write_amt);
+        }
+
         lock_release(&fl);
         page_unlock(usrc);
 
         /* Handle return value. */
-        if (retval < 0) {
-            if (bytes_written == 0)
-                bytes_written = -1;
-            break;
+        switch(id){
+          case 3:
+              bytes_written = -1;
+              break;
+        }
+        if (id==2 ||id==3){
+          break;
         }
       bytes_written += retval;
 
@@ -475,7 +536,7 @@ static int write(int handle, void *usrc_, unsigned size) {
  
 
 static int seek(int handle, unsigned position) {
-    struct file_descriptor *fd = lookup_fd(handle);
+    struct file_descriptor *fd = get_fd(handle);
 
     lock_acquire(&fl);
     if ((off_t)position >= 0)
@@ -489,7 +550,7 @@ static int seek(int handle, unsigned position) {
 static int
 tell (int handle) 
 {
-  struct file_descriptor *fd = lookup_fd (handle);
+  struct file_descriptor *fd = get_fd (handle);
   unsigned position;
    
   lock_acquire (&fl);
@@ -503,7 +564,7 @@ tell (int handle)
 static int
 close (int handle) 
 {
-  struct file_descriptor *fd = lookup_fd (handle);
+  struct file_descriptor *fd = get_fd (handle);
   lock_acquire (&fl);
   file_close (fd->file);
   lock_release (&fl);
@@ -520,13 +581,14 @@ lookup_mapping (int handle)
 {
   struct thread *cur = thread_current ();
   struct list_elem *e;
-   
-  for (e = list_begin (&cur->mappings); e != list_end (&cur->mappings);
-       e = list_next (e))
+   e = list_begin (&cur->mappings); 
+  while  (e != list_end (&cur->mappings))
     {
       struct mapping *m = list_entry (e, struct mapping, elem);
-      if (m->handle == handle)
+      int test= m->handle == handle;
+      if (test>0)
         return m;
+      e = list_next (e);
     }
  
   thread_exit ();
@@ -537,7 +599,7 @@ lookup_mapping (int handle)
 static int
 mmap (int handle, void *addr)
 {
-  struct file_descriptor *fd = lookup_fd (handle);
+  struct file_descriptor *fd = get_fd (handle);
   struct mapping *m = malloc (sizeof *m);
   size_t offset;
   off_t length;
@@ -580,7 +642,13 @@ mmap (int handle, void *addr)
       p->writable = false;
       p->fileptr = m->file;
       p->ofs = offset;
-      p->bytes = length >= PGSIZE ? PGSIZE : length;
+      switch (length >= PGSIZE){
+        case 1:
+          p->bytes=PGSIZE;
+          break;
+        case 0:
+          p->bytes=length;
+      }
       offset += p->bytes;
       length -= p->bytes;
       m->page_cnt++;
@@ -593,7 +661,7 @@ mmap (int handle, void *addr)
 static int
 munmap (int mapping) 
 {
-    while(lookup_mapping (mapping)->page_cnt > 0){ 
+  while(lookup_mapping (mapping)->page_cnt > 0){ 
     page_deallocate (lookup_mapping (mapping)->base); 
     lookup_mapping (mapping)->base += PGSIZE; 
     lookup_mapping (mapping)->page_cnt -= 1;
@@ -610,14 +678,15 @@ syscall_exit (void)
 {
   struct thread *cur = thread_current ();
   struct list_elem *e, *next;
-   
-  for (e = list_begin (&cur->fds); e != list_end (&cur->fds); e = next)
-    {
-      struct file_descriptor *fd = list_entry (e, struct file_descriptor, elem);
-      next = list_next (e);
-      lock_acquire (&fl);
-      file_close (fd->file);
-      lock_release (&fl);
-      free (fd);
-    }
+   e=list_begin (&cur->fds);
+
+   while (e != list_end(&cur->fds)) {
+       struct file_descriptor *fd = list_entry(e, struct file_descriptor, elem);
+       next = list_next(e);
+       lock_acquire(&fl);
+       file_close(fd->file);
+       lock_release(&fl);
+       free(fd);
+       e = next;
+   }
 }

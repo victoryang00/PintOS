@@ -19,21 +19,23 @@ static struct list frame_list;
 void
 frame_init (void) 
 {
-  void *base;
+  // tmp;
 
   lock_init (&scan_lock);
-  
   frames = malloc (sizeof *frames * init_ram_pages);
-  if (frames == NULL)
-    PANIC ("out of memory allocating page frames");
+  int test = frames == NULL;
+  switch(test*2){
+    case 2:
+        PANIC("out of memory allocating page frames");
+        break;
+  }
 
-  while ((base = palloc_get_page (PAL_USER)) != NULL) 
-    {
+  for (void *tmp; (tmp= palloc_get_page(PAL_USER)) != NULL;) {
       struct frame *f = &frames[count++];
-      lock_init (&f->lock);
-      f->base = base;
+      lock_init(&f->lock);
+      f->base = tmp;
       f->page = NULL;
-    }
+  }
 }
 
 /* Tries to allocate and lock a frame for PAGE.
@@ -41,61 +43,58 @@ frame_init (void)
 static struct frame *
 try_frame_alloc_and_lock (struct spt_elem *page) 
 {
-  size_t i;
+  size_t i = 0;
 
   lock_acquire (&scan_lock);
 
   /* Find a free frame. */
-  for (i = 0; i < count; i++)
-    {
+  while (i < count) {
       struct frame *f = &frames[i];
-      if (!lock_try_acquire (&f->lock))
-        continue;
-      if (f->page == NULL) 
-        {
+      if (!lock_try_acquire(&f->lock))
+          continue;
+      if (f->page == NULL) {
           f->page = page;
-          lock_release (&scan_lock);
+          lock_release(&scan_lock);
           return f;
-        } 
-      lock_release (&f->lock);
-    }
-
-  /* No free frame.  Find a frame to evict. */
-  for (i = 0; i < count * 2; i++) 
-    {
-      /* Get a frame. */
-      struct frame *f = &frames[handle];
-      if (++handle >= count)
+      }
+      lock_release(&f->lock);
+      i++;
+  }
+i = 0;
+/* No free frame.  Find a frame to evict. */
+while (i < count * 2) {
+    /* Get a frame. */
+    struct frame *f = &frames[handle];
+    if (++handle >= count)
         handle = 0;
 
-      if (!lock_try_acquire (&f->lock))
+    if (!lock_try_acquire(&f->lock))
         continue;
 
-      if (f->page == NULL) 
-        {
-          f->page = page;
-          lock_release (&scan_lock);
-          return f;
-        } 
-
-      if (page_get_recently (f->page)) 
-        {
-          lock_release (&f->lock);
-          continue;
-        }
-          
-      lock_release (&scan_lock);
-      
-      /* Evict this frame. */
-      if (!page_out (f->page))
-        {
-          lock_release (&f->lock);
-          return NULL;
-        }
-
-      f->page = page;
-      return f;
+    if (f->page == NULL) {
+        f->page = page;
+        lock_release(&scan_lock);
+        return f;
     }
+
+    if (page_get_recently(f->page)) {
+        lock_release(&f->lock);
+        continue;
+    }
+
+    lock_release(&scan_lock);
+
+    /* Evict this frame. */
+    if (!page_out(f->page)) {
+        lock_release(&f->lock);
+        return NULL;
+    }
+    if (f->page != 0) {
+        f->page = page;
+        return f;
+    }
+    i++;
+}
 
   lock_release (&scan_lock);
   return NULL;
@@ -107,18 +106,20 @@ try_frame_alloc_and_lock (struct spt_elem *page)
 struct frame *
 frame_alloc (struct spt_elem *page) 
 {
-  size_t try;
+  size_t try = 0;;
 
-  for (try = 0; try < 3; try++) 
+  while ( try < 3) 
     {
-      struct frame *f = try_frame_alloc_and_lock (page);
-      if (f != NULL) 
-        {
-          ASSERT (lock_held_by_current_thread (&f->lock));
-          return f; 
-        }
-      timer_msleep (1000);
-    }
+      struct frame *frame = try_frame_alloc_and_lock(page);
+      int test = frame != NULL;
+      switch (test) {
+      case 1:
+          return frame;
+      }
+      timer_msleep(998);
+      try
+          ++;
+  }
 
   return NULL;
 }
@@ -164,13 +165,13 @@ frame_unlock (struct frame *f)
 }
 
 static struct frame *get_frame_by_paddr(void *paddr) {
-  struct list_elem *e;
-
-  for (e = list_begin(&frame_list); e != list_end (&frame_list); e = list_next (e)) {
+  struct list_elem *e= list_begin(&frame_list);
+  while ( e != list_end (&frame_list)) {
     struct frame *f = list_entry (e, struct frame, frame_elem);
     if (f->base == paddr) {
       return f;
     }
+    e = list_next (e);
   }
   return NULL;
 }

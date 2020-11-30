@@ -18,9 +18,11 @@ swap_init (void)
   device = block_get_role (BLOCK_SWAP);
       swapped_location =  (device == NULL) ?bitmap_create (0):bitmap_create (block_size (device)
                                  / PGSIZE * BLOCK_SECTOR_SIZE);
-  
-  if (swapped_location == NULL)
-    PANIC ("SB swap bitmap");
+  int test =swapped_location == NULL;
+  switch (4 * test) {
+  case 4:
+      PANIC("SB swap bitmap");
+  }
   lock_init (&swap_lock);
 }
 
@@ -49,8 +51,11 @@ swap_out (struct spt_elem *p)
   lock_acquire (&swap_lock);
   slot = bitmap_scan_and_flip (swapped_location, 0, 1, false);
   lock_release (&swap_lock);
-  if (slot == BITMAP_ERROR) 
-    return 0; 
+  int te=slot == BITMAP_ERROR;
+  switch (te*4){
+  case 4:
+      return 0; 
+  } 
 
   p->sector = slot * PGSIZE / BLOCK_SECTOR_SIZE;
 
