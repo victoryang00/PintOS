@@ -21,23 +21,13 @@ struct dir_entry
     bool in_use;                        /* In use or free? */
   };
 
-/*To examine the dir is empty. */
-bool dir_is_empty (struct dir *dir){
-  char name[NAME_MAX+1];
-  return !dir_readdir(dir,name,1);
-}
-
-/* To examine whether the dir exists. */
-bool dir_exist (struct dir *dir){
-  return !dir->inode->removed;
-}
 
 /* Rewrite the dir create function. to differ from the root and not. 
   Also be aware of the root or not. */
 struct inode *
 dir_create (block_sector_t sector, block_sector_t parent_sector)
 {
-  bool success = inode_create (sector, 2 * sizeof(struct dir_entry), DIR_TYPE);
+  bool success = inode_create (sector, 2 * sizeof(struct dir_entry), 0);
  
 
   struct inode *inode = NULL;
@@ -54,17 +44,17 @@ dir_create (block_sector_t sector, block_sector_t parent_sector)
 
       memset (entries, 0, sizeof entries);
 
-      /* "." entry. */
+      /* Deal with "." entry. */
       entries[0].inode_sector = sector;
-      strlcpy (entries[0].name, ".", sizeof (entries[0].name));
+      strlcat (entries[0].name, ".", sizeof entries[0].name);
       entries[0].in_use = true;
 
-      /* ".." entry. */
+      /* Deal with ".." entry. */
       entries[1].inode_sector = parent_sector;
-      strlcpy (entries[1].name, "..", sizeof (entries[1].name));
+      strlcat (entries[1].name, "..", sizeof entries[1].name);
       entries[1].in_use = true;
       
-      if (inode_write_at (inode, entries, sizeof(entries), 0) != sizeof (entries))
+      if (inode_write_at (inode, entries, sizeof entries, 0) != sizeof entries)
         {
           inode_remove (inode);
           inode_close (inode); 
@@ -282,7 +272,26 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1], int order)
                   strlcpy(name, e.name, NAME_MAX + 1);
                   return true;
               }
-    }
+    }}
   return false;
-  }
+}
+
+bool
+dir_empty (struct dir *dir)
+{
+  char name[NAME_MAX + 1];
+  if (dir_readdir(dir, name, 1))
+      return false;
+  else
+      return true;
+}
+
+
+bool
+dir_exist (struct dir *dir)
+{
+    if (dir->inode->removed)
+        return false;
+    else
+        return true;
 }

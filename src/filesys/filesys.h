@@ -4,6 +4,12 @@
 #include <stdbool.h>
 #include "filesys/off_t.h"
 
+struct file {
+    off_t pos;                  /* Current position. */
+    bool deny_write;            /* Has file_deny_write() been called? */
+    struct inode *inode;        /* File's inode. */
+};
+
 /* Sectors of system file inodes. */
 #define FREE_MAP_SECTOR 0       /* Free map file inode sector. */
 #define ROOT_DIR_SECTOR 1       /* Root directory file inode sector. */

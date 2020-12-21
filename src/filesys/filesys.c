@@ -43,7 +43,7 @@ void
 filesys_done (void) 
 {
   // write back all cache t
-  cache_write_to_disk(true);
+  cache_write_disk(true);
   free_map_close ();
 }
 
@@ -96,11 +96,11 @@ parse_file_path (const char *name,
   int ok;
   
   /* Find starting directory. */
-  if (name[0] == '/' || thread_current ()->cwd == NULL)
+  if (name[0] == '/' || thread_current ()->curr_dir == NULL)
     dir = dir_open_root ();
   else
-    dir = dir_reopen (thread_current ()->cwd);
-  if (dir == NULL || !is_dir_exist(dir)){  // check if this directory has been removed
+    dir = dir_reopen (thread_current ()->curr_dir);
+  if (dir == NULL || !dir_exist(dir)){  // check if this directory has been removed
     /* Return failure. */
     dir_close (dir);
     *dirp = NULL;
@@ -133,7 +133,7 @@ parse_file_path (const char *name,
 
       dir_close (dir);
       dir = dir_open (inode);
-      if (dir == NULL || !is_dir_exist(dir)){
+      if (dir == NULL || !dir_exist(dir)){
         /* Return failure. */
         dir_close (dir);
         *dirp = NULL;
@@ -202,7 +202,7 @@ filesys_dir_create (const char *name, off_t initial_size)
     {
       struct inode *inode;
       inode = dir_create (inode_sector,
-                            inode_get_inumber (dir_get_inode (dir))); 
+                            inode_file_get_inumber (dir_get_inode (dir))); 
       if (inode != NULL)
         {
           success = dir_add (dir, base_name, inode_sector);
@@ -258,12 +258,12 @@ bool can_move(const char* name){
   struct file * file = filesys_open (name);
   if(file==NULL){
     return false; 
-  }else if(is_really_file(file)){
+  }else if(file_validate(file)){
       file_close(file);
       return true; // we don't care about file
   }
   struct dir* dir = dir_open(file->inode);
-  if(dir==NULL || !is_empty_dir(dir)){
+  if(dir==NULL || !dir_empty(dir)){
     dir_close(dir);
     return false;
   }
@@ -320,8 +320,8 @@ filesys_chdir (const char *name)
   struct dir *dir = dir_open (name_to_inode (name));
   if (dir != NULL) 
     {
-      dir_close (thread_current ()->cwd);
-      thread_current ()->cwd = dir;
+      dir_close (thread_current ()->curr_dir);
+      thread_current ()->curr_dir = dir;
       return true;
     }
   else

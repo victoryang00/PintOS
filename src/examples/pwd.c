@@ -29,7 +29,7 @@ main (void)
    Returns true if successful, false if the file could not be
    opened. */
 static bool
-get_inumber (const char *file_name, int *inum) 
+file_get_inumber (const char *file_name, int *inum) 
 {
   int fd = open (file_name);
   if (fd >= 0) 
@@ -84,7 +84,7 @@ getcwd (char *cwd, size_t cwd_size)
     return false;
 
   /* Get inumber for current directory. */
-  if (!get_inumber (".", &child_inum))
+  if (!file_get_inumber (".", &child_inum))
     return false;
 
   namep = name;
@@ -116,7 +116,7 @@ getcwd (char *cwd, size_t cwd_size)
       for (;;)
         {
           int test_inum;
-          if (!readdir (parent_fd, namep) || !get_inumber (name, &test_inum)) 
+          if (!readdir (parent_fd, namep) || !file_get_inumber (name, &test_inum)) 
             {
               close (parent_fd);
               return false; 

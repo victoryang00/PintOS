@@ -4,6 +4,11 @@
 #include "threads/malloc.h"
 #include "filesys/directory.h"
 
+struct file {
+    off_t pos;                  /* Current position. */
+    bool deny_write;            /* Has file_deny_write() been called? */
+    struct inode *inode;        /* File's inode. */
+};
 
 /* link the file in sector with the length of the bytes. 
    if the inode is successfully created, return the inode, else return null.*/
@@ -13,7 +18,7 @@ file_create (block_sector_t sector, off_t length)
 {
   /* init the inode with NULL.*/
   struct inode *inode = NULL;
-  if(inode_create (sector, length, FILE_TYPE)){
+  if(inode_create (sector, length, 1)){
     inode = inode_open (sector);
     if (inode == NULL)
       free_map_release_at (sector);
@@ -187,17 +192,17 @@ file_tell (struct file *file)
   return file->pos;
 }
 
-bool is_really_file(struct file* file){
-  return file->inode->data.is_file==FILE_TYPE;
+bool file_validate(struct file* file){
+  return file->inode->data.is_file==1;
 }
 
-bool read_dir_by_file_node(struct file* file, char* name, int order){
-  if(is_really_file(file)){
+bool file_get_dir(struct file* file, char* name, int order){
+  if(file_validate(file)){
     return false;
   }
   return dir_readdir(dir_open(file->inode), name, order);
 }
 
-int get_inumber(struct file* file){
+int file_get_inumber(struct file* file){
   return file->inode->sector;
 }

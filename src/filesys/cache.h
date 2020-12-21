@@ -8,8 +8,8 @@
 
 
 struct list cache_list;                              /* cache list */
-uint32_t cache_size;                            /* current cache number of pintos */
-struct lock cache_lock;                                 /* cache lock */                
+uint32_t cache_size;                                 /* current cache number of pintos */
+struct lock cache_lock;                              /* cache lock */                
 
 struct list_elem* head;                                 /* head pointer for clock */
 
@@ -35,6 +35,6 @@ struct cache_entry* cache_replace (block_sector_t sector, int dirty);
 
 void cache_write_disk (int is_removed);                   /* Write back to the disk. */
 void cache_back_loop (void *aux);                         /* Back loop to write the whole things back */
-
+int cache_examine (void);                                 /* CACHE_FLUSH implementation */
 
 #endif /* filesys/cache.h */
