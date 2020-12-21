@@ -329,7 +329,6 @@ thread_exit (void)
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
-  intr_disable ();
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
@@ -855,3 +854,11 @@ thread_set_tid(struct thread *t, tid_t tid){
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+void acquire_file_lock(){
+  lock_acquire(&file_lock);
+}
+
+void release_file_lock(){
+  lock_release(&file_lock);
+}

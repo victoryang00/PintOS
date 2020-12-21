@@ -33,7 +33,7 @@ struct cache_entry* cache_replace (block_sector_t sector, int dirty);
 
 
 
-void cache_write_disk (int is_removed);
+void cache_write_disk (int is_removed);                   /* Write back to the disk. */
 void cache_back_loop (void *aux);                         /* Back loop to write the whole things back */
 
 

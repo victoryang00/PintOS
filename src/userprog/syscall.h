@@ -2,12 +2,16 @@
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
 
+
 void syscall_init (void);
-void syscall_exit (void);
+void syscall_exit(void);
 typedef int pid_t;
 struct openfile* getFile(int);
-struct lock fl;
-void syscall_exit(void);
+// struct lock fl;
+
+void sys_exit(void);
+
+struct file_node * find_file(struct list *, int);
 
 /* A file descriptor, for binding a file handle to a file. */
 struct file_descriptor {
@@ -25,4 +29,11 @@ struct mapping {
     size_t page_cnt; /* Number of pages mapped. */
 };
 
+// the struct of opened file
+struct file_node {
+    int fd;
+    struct file *file;
+    struct list_elem file_elem;
+    int read_dir_cnt;
+};
 #endif /* userprog/syscall.h */

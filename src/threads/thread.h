@@ -211,4 +211,9 @@ void thread_recalculate_recent_cpu(struct thread *t,void *);
 void thread_recalculate_priority(struct thread *t,void *);
 
 void thread_set_tid(struct thread *t, tid_t tid);
+
+/* For file lock and release. */
+void acquire_file_lock(void);
+void release_file_lock(void);
+
 #endif /* threads/thread.h */

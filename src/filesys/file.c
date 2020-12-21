@@ -3,37 +3,32 @@
 #include "filesys/inode.h"
 #include "threads/malloc.h"
 #include "filesys/directory.h"
-#include "devices/block.h"
-#include "filesys/inode.h"
 
-struct file {
-    off_t pos;                  /* Current position. */
-    bool deny_write;            /* Has file_deny_write() been called? */
-    struct inode *inode;        /* File's inode. */
-};
 
-struct inode * file_create(block_sector_t sector,off_t length){
-  struct inode *temp = NULL;
-  int file_state = inode_create(sector,length, 1);
-  switch(file_state){
-    case 1:
-      temp = inode_open(sector);
-      if (!temp){
-        free_map_release_at_sector(sector);
-      } 
-    
+/* link the file in sector with the length of the bytes. 
+   if the inode is successfully created, return the inode, else return null.*/
+
+struct inode *
+file_create (block_sector_t sector, off_t length) 
+{
+  /* init the inode with NULL.*/
+  struct inode *inode = NULL;
+  if(inode_create (sector, length, FILE_TYPE)){
+    inode = inode_open (sector);
+    if (inode == NULL)
+      free_map_release_at (sector);
   }
-  file_state = (temp !=NULL)*4 +(length >0)*2+inode_write_at (temp, "", 1, length - 1) != 1);
 
-  switch(file_state){
-    case 7:
-      inode_remove (temp);
-      inode_close (temp);
-      temp = NULL;
-  }
-  /* Eventually return the temp */
-  return temp;
+  if (inode != NULL && length > 0
+      && inode_write_at (inode, "", 1, length - 1) != 1)
+    {
+      inode_remove (inode);
+      inode_close (inode);
+      inode = NULL;
+    }
+  return inode;
 }
+
 
 /* Opens a file for the given INODE, of which it takes ownership,
    and returns the new file.  Returns a null pointer if an
@@ -62,7 +57,8 @@ file_open (struct inode *inode)
 struct file *
 file_reopen (struct file *file) 
 {
-  return file_open (inode_reopen (file->inode));
+  struct file* new_file=file_open (inode_reopen (file->inode));
+  return new_file;
 }
 
 /* Closes FILE. */
@@ -191,17 +187,17 @@ file_tell (struct file *file)
   return file->pos;
 }
 
-bool file_validate(struct file* file){
-  return file->inode->data.is_file==1;
+bool is_really_file(struct file* file){
+  return file->inode->data.is_file==FILE_TYPE;
 }
 
-bool file_get_dir(struct file* file, char* name, int order){
-  if(file_validate(file)){
+bool read_dir_by_file_node(struct file* file, char* name, int order){
+  if(is_really_file(file)){
     return false;
   }
   return dir_readdir(dir_open(file->inode), name, order);
 }
 
-int file_get_inumber(struct file* file){
+int get_inumber(struct file* file){
   return file->inode->sector;
 }
