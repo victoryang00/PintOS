@@ -202,7 +202,7 @@ filesys_dir_create (const char *name, off_t initial_size)
     {
       struct inode *inode;
       inode = dir_create (inode_sector,
-                            inode_file_get_inumber (dir_get_inode (dir))); 
+                            inode_get_inumber (dir_get_inode (dir))); 
       if (inode != NULL)
         {
           success = dir_add (dir, base_name, inode_sector);

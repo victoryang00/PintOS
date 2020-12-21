@@ -35,8 +35,6 @@ static int load_avg;
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-/* add a statistical variable of thread -- sleep list*/
-static struct list sleep_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -202,9 +200,13 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  thread_set_tid(t,allocate_tid());
-  tid = t->tid;
-
+  tid = t->tid = allocate_tid ();
+  // allocate space for child thread struct
+  struct wsem *wsem = malloc(sizeof(struct wsem));
+  wsem->tid = tid;
+  // add the child thread struct to the childs of the current thread 
+  list_push_back (&thread_current()->child_list, &(wsem->wsem_elem));
+  
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack' 
      member cannot be observed. */
@@ -278,6 +280,19 @@ thread_name (void)
   return thread_current ()->name;
 }
 
+void
+thread_wait(struct thread *t,int child_tid)
+{
+    for (struct list_elem *e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e))
+  {
+    t = list_entry (e, struct thread, allelem);
+    if(t->tid==child_tid){
+        sema_down(&t->cwem);
+        break;
+    }
+  }
+}
+
 /* Returns the running thread.
    This is running_thread() plus a couple of sanity checks.
    See the big comment at the top of thread.h for details. */
@@ -310,20 +325,37 @@ void
 thread_exit (void) 
 {
   ASSERT (!intr_context ());
-  syscall_exit();
+
 #ifdef USERPROG
   process_exit ();
 #endif
 
-  // close the executable file
-  file_close(thread_current()->executable);
-  // close all file that opened in the thread_current()
-  // file list
-  struct list *files = &thread_current()->files;
-  while (!list_empty(files)) {
-      struct file_node *f = list_entry(list_pop_front(files), struct file_node, file_elem);
-      file_close(f->file);
-      free(f);
+  intr_disable ();
+
+  if( thread_current()->parent->load_status){
+    printf("%s: exit(%d)\n",thread_name(),thread_current()->ret_status);
+  }
+
+  struct list_elem *e;
+  struct list *l = &thread_current()->parent->child_list;
+  struct wsem *wsem;
+
+  for (e = list_begin(l); e != list_end(l); e = list_next(e)) {
+    wsem = list_entry(e, struct wsem, wsem_elem);
+    if(wsem->tid == thread_current()->tid) {
+      wsem->ret_status = thread_current()->ret_status;
+      break;
+    }
+  }
+
+  sema_up(&thread_current()->cwem);
+  file_close(thread_current()->elffile);
+  struct list *files = &thread_current()->fds;
+  while(!list_empty(files))
+  {
+    struct file_node *f = list_entry (list_pop_front(files), struct file_node, file_elem);
+    file_close(f->file);
+    free(f);
   }
 
   /* Remove thread from all threads list, set our status to dying,
@@ -501,13 +533,15 @@ is_thread (struct thread *t)
 static void
 init_thread (struct thread *t, const char *name, int priority)
 {
+  enum intr_level old_level;
+
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
 
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
-  strlcat (t->name, name, sizeof t->name);
+  strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
 
@@ -515,40 +549,23 @@ init_thread (struct thread *t, const char *name, int priority)
   t->recent_cpu = 0;      //set the origin to 0
 
   t->magic = THREAD_MAGIC;
-  
-  /* User Process. Deprecated */
-  // t->awaited=false;
-  // t->elffile=NULL;
-  // sema_init(&t->wsem,0);
-  // sema_init(&t->ltem,0);
-  // sema_init(&t->tsem,0);
-  // t->pagedir = NULL;
-  // t->pages = NULL;
-  // list_init (&t->fds);
-  // list_init (&t->mappings);
-  // t->next_handle = 2;
-
-  // list_init(&t->child_list);
-  
-  // for (int i = 0; i < 128; i++) {
-  //     t->file_desc.file[i] = NULL;
-  //     t->file_desc.fd = i;
-  // }
-  // t->ret_status = -1;
-  // t->load_status = 1;
-
-  t->ret_status = -1;
-  t->wsem = NULL;
+  // initiable thread relative variables
   list_init(&t->child_list);
-  sema_init(&t->tsem, 0);
-  t->pagedir = NULL;
-  t->pages = NULL;
-  t->elffile = NULL;
   list_init(&t->fds);
-  list_init(&t->mappings);
+  sema_init(&t->esem,0);
+  sema_init(&t->cwem, 0);
+
+  t->load_status = true;
+  t->ret_status = -1;
+  t->elffile = NULL;
   t->next_handle = 2;
 
-  list_push_back(&all_list,&t->allelem);
+  if(t == initial_thread) t->parent = NULL;
+  else t->parent = thread_current();
+
+  old_level = intr_disable ();
+  list_push_back (&all_list, &t->allelem);
+  intr_set_level (old_level);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

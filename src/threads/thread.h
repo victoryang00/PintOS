@@ -102,17 +102,17 @@ struct thread
         struct file *file[128];         /* all the exec file */
         int fd;                         /* file descriptor */;
     }file_desc;
-    
-    /* For the process status */
-    int ret_status; /* The return status code. */
-    int load_status; /* The load status code. */
-    bool awaited; /* waited status */
-    struct list child_list; /* List element for children processes list. */
-    struct list_elem childelem;         /* List element for children processes list. */
-    struct list fd_list; /* List of opened file. */
-    struct semaphore ltem,tsem; /* The semaphore used to notify the parent process whether the child process is loaded successfully. */
 
-    
+     /* For the process status */
+    int ret_status;                     /* The return status code. */
+    int load_status;                    /* The load status code. */
+    bool awaited;                       /* waited status */
+    struct list child_list;             /* List element for children processes list. */
+    struct list_elem childelem;         /* List element for children processes list. */
+    struct list fd_list;                /* List of opened file. */
+    struct semaphore ltem,tsem;         /* The semaphore used to notify the parent process whether the child process is loaded successfully. */
+
+
     /* Deprecated */
     struct list_elem slpelem;           /* the element in sleep_list. */
     int64_t sleep_ticks;                /* the time to wait */
@@ -132,33 +132,38 @@ struct thread
     struct list mappings;               /* Memory-mapped files. */
     int next_handle;                    /* For next handle to deal with the problem */
     struct wsem * wsem;                 /* This process's completion status, to a smaller granularity. */
-
-   /* Tracks the completion of a process.
-      Reference held by both the parent, in its `children' list,
-      and by the child, in its `wait_status' pointer. */
-    struct wsem {
-        struct list_elem elem;          /* `children' list element. */
-        struct lock lock;               /* Protects ref_cnt. */
-        int ref_cnt;                    /* 2=child and parent both alive,
-                                          1=either child or parent alive,
-                                          0=child and parent both dead. */
-        tid_t tid;                      /* Child thread id. */
-        int exit_code;                  /* Child exit code, if dead. */
-        struct semaphore dead;          /* 1=child alive, 0=child dead. */
-    };
+    struct semaphore esem;              /* semaphore for child thread load. */
+    struct semaphore cwem;              /* semaphore for child thread exit. */
+    struct thread* parent; 
 
     /* The dir thread hold. */
     struct dir* curr_dir;
 
-    struct list files;// the list of opened files
-    struct file *executable; // the thread executable file
-
+#ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+#endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+  
+  /* Tracks the completion of a process.
+   Reference held by both the parent, in its `children' list,
+   and by the child, in its `wait_status' pointer. */
+struct wsem {
+  struct list_elem wsem_elem;
+  int ret_status;
+  tid_t tid;
+  struct lock lock;               /* Protects ref_cnt. */
+  int ref_cnt;                    /* 2=child and parent both alive,
+                                       1=either child or parent alive,
+                                       0=child and parent both dead. */
+  struct semaphore dead;          /* 1=child alive, 0=child dead. */
+
+};
+
+struct list sleep_list;
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -215,5 +220,6 @@ void thread_set_tid(struct thread *t, tid_t tid);
 /* For file lock and release. */
 void acquire_file_lock(void);
 void release_file_lock(void);
+void thread_wait(struct thread *t,int child_tid);
 
 #endif /* threads/thread.h */

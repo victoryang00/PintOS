@@ -53,8 +53,8 @@ process_execute (const char *file_name)
     return tid;
   }
   // the parent thread block for thread loading
-  sema_down(&thread_current()->exec_sema);
-  if (!thread_current()->exec_status) return TID_ERROR;
+  sema_down(&thread_current()->esem);
+  if (!thread_current()->load_status) return TID_ERROR;
   return tid;
 }
 
@@ -70,7 +70,7 @@ start_process (void *file_name_)
   char *fn_copy = malloc(strlen(file_name) + 1);
   strlcpy(fn_copy, file_name, strlen(file_name) + 1);
 
-  /* Initialize interrupt frame and load executable. */
+  /* Initialize interrupt frame and load elffile. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
@@ -85,17 +85,17 @@ start_process (void *file_name_)
   
   struct thread *cur = thread_current();
   
-  // lock the executable file that belongs to thread_current()
+  // lock the elffile file that belongs to thread_current()
   acquire_file_lock();
-  cur->executable = filesys_open(token);
-  // once executable file is opened, deny other writing requests
-  if(cur->executable != NULL) file_deny_write(cur->executable);
+  cur->elffile = filesys_open(token);
+  // once elffile file is opened, deny other writing requests
+  if(cur->elffile != NULL) file_deny_write(cur->elffile);
   release_file_lock();
 
-  cur->parent->exec_status = success;
+  cur->parent->load_status = success;
 
   if(!success)  {
-    sema_up(&thread_current()->parent->exec_sema);
+    sema_up(&thread_current()->parent->esem);
     thread_exit();
   }
   // token out the arguments
@@ -124,7 +124,7 @@ start_process (void *file_name_)
   if_.esp -= 4;
   memcpy(if_.esp, &zero, sizeof(int));
   // up the semaphore
-  sema_up(&thread_current()->parent->exec_sema);
+  sema_up(&thread_current()->parent->esem);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -143,64 +143,70 @@ start_process (void *file_name_)
    been successfully called for the given TID, returns -1
    immediately, without waiting. */
 int
-process_wait (tid_t child_tid) {
-    int status = child_thread_wait(child_tid);
-    return status;
+process_wait (tid_t child_tid)
+{
     int a = child_tid;
     int ret_status;
-    struct thread *t = thread_current();
-    struct thread *child = NULL;
+    struct thread *ts = thread_current();
+    struct thread *sb = NULL;
     struct list_elem *e;
     /* check whether is in the children list . */
-    if (t == NULL) {
-        for (e = list_begin(&t->child_list); e != list_end(&t->child_list); e = list_next(e)) {
-            child = list_entry(e, struct thread, childelem);
-            if (child->tid == child_tid) {
-                sema_down(&child->wsem);
-                child->awaited = true;
+    if (ts == NULL) {
+        for (e = list_begin(&ts->child_list); e != list_end(&ts->child_list); e = list_next(e)) {
+            sb = list_entry(e, struct thread, childelem);
+            if (sb->tid == child_tid) {
+                sema_down(&sb->wsem);
+                sb->awaited = true;
                 break;
             }
         }
     } else {
-        for (e = list_begin(&t->child_list); e != list_end(&t->child_list); e = list_next(e)) {
-            struct wsem *cs = list_entry(e, struct wsem, elem);
-            if (cs->tid == child_tid) {
-                int exit_code;
-                int count;
-                list_remove(e);
-                sema_down(&cs->dead);
-                exit_code = cs->exit_code;
-                lock_acquire(&cs->lock);
-                count = --cs->ref_cnt;
-                lock_release(&cs->lock);
+        for (;;) {
+            struct wsem *cs = list_entry(e, struct wsem, wsem_elem);
+
+                int count=cs->tid;
 
                 if (count != 0) {
-                    lock_acquire(&cs->lock);
-                    cs->ref_cnt = count;
-                    lock_release(&cs->lock);
-                } else
+                    count = --cs->ref_cnt;
+                    }
                     free(cs);
-                return exit_code;
+                    break;
             }
-        }
 
-        /* if pid is not in its children list, return immediately. */
-        if (e == list_end(&t->child_list)) {
-            return -1;
-        }
-
-        /* Since one process will not wait for its child process twice. So we can remove the child process from its
-          children list. So that we can return immediately next time when we want to wait for the same child process
-          twice since it is no longer in the children list.. Morever, generally, the child process should actually exit
-          when its parent process is exit, since
-          there is no need to maintain its exit status, their parent is dead and no one will look up its exit status*/
-        if (t == NULL) {
-            list_remove(&child->childelem);
-            ret_status = child->ret_status;
-            sema_up(&child->tsem);
-        }
-        return -1;
     }
+  struct list *l = &thread_current()->child_list;
+  struct thread *t=NULL;
+
+  int status = -1;
+
+  thread_wait(t,child_tid);
+  struct wsem *child = NULL;
+  for (e = list_begin(l); e != list_end(l); e = list_next(e)) {
+    child = list_entry(e, struct wsem, wsem_elem);
+    if(child->tid == child_tid) {
+      status = child->ret_status;
+      break;
+    }
+  }
+  /* if pid is not in its children list, return immediately. */
+  if (e == list_end(&t->child_list)) {
+      return -1;
+  }
+  list_remove(e);
+  free(child);
+  
+  return status;
+  /* Since one process will not wait for its child process twice. So we can remove the child process from its
+  children list. So that we can return immediately next time when we want to wait for the same child process
+  twice since it is no longer in the children list.. Morever, generally, the child process should actually exit
+  when its parent process is exit, since
+  there is no need to maintain its exit status, their parent is dead and no one will look up its exit status*/
+  if (t == NULL) {
+      list_remove(&t->childelem);
+      ret_status = t->ret_status;
+      sema_up(&t->tsem);
+  }
+  return -1;
 }
 
 /* Free the current process's resources. */
@@ -216,7 +222,7 @@ process_exit (void)
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
-  #ifdef VM
+   #ifdef VM
           /* If its parent is waiting for it. Wake up the parent process. */
         sema_up(&cur->wsem);
         cur->awaited = false;
@@ -334,7 +340,7 @@ typedef uint16_t Elf32_Half;
 #define PE32Ox PRIx32   /* Print Elf32_Off in hexadecimal. */
 #define PE32Hx PRIx16   /* Print Elf32_Half in hexadecimal. */
 
-/* Executable header.  See [ELF1] 1-4 to 1-8.
+/* executable header.  See [ELF1] 1-4 to 1-8.
    This appears at the very beginning of an ELF binary. */
 struct Elf32_Ehdr
   {
@@ -395,34 +401,30 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *cmd_line, void (**eip) (void), void **esp) 
+load (const char *file_name, void (**eip) (void), void **esp)
 {
   struct thread *t = thread_current ();
-  char file_name[NAME_MAX + 2];
+  char cmd_line[NAME_MAX + 2];
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
   off_t file_ofs;
   bool success = false;
-  char *cp;
   int i;
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
-    if (t->pagedir == NULL) {
-        goto done;
-    }
+  if (t->pagedir == NULL)
+    goto done;
   process_activate ();
 
   /* Open executable file. */
   acquire_file_lock();
-    t->elffile = file = filesys_open (file_name);
+  file = filesys_open (file_name);
   if (file == NULL)
     {
       printf ("load: %s: open failed\n", file_name);
       goto done;
     }
-
-  file_deny_write (t->elffile);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr

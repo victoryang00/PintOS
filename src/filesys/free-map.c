@@ -60,7 +60,6 @@ free_map_release_at (block_sector_t sector)
   ASSERT (bitmap_test (free_map, sector));
   bitmap_reset (free_map, sector);
   lock_release (&free_map_lock);
-  // bitmap_write (free_map, free_map_file);
 }
 
 /* Opens the free map file and reads it from disk. */

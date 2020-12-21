@@ -23,8 +23,8 @@ syscall_function syscalls[SYSCALL_NUMBER];
 
 static void syscall_handler (struct intr_frame *);
 
-void exit(int exit_status){
-  thread_current()->exit_status = exit_status;
+void exit(int ret_status){
+  thread_current()->ret_status = ret_status;
   thread_exit ();
 }
 
@@ -172,11 +172,11 @@ void sys_open(struct intr_frame * f) {
   // check whether the open file is valid
   if(open_f){
     struct file_node *fn = malloc(sizeof(struct file_node));
-    fn->fd = t->max_fd++;
+    fn->fd = t->next_handle++;
     fn->file = open_f;
     fn->read_dir_cnt = 0;
     // put in file list of the corresponding thread
-    list_push_back(&t->files, &fn->file_elem);
+    list_push_back(&t->fds, &fn->file_elem);
     f->eax = fn->fd;
   } else
     f->eax = -1;
@@ -185,7 +185,7 @@ void sys_open(struct intr_frame * f) {
 void sys_filesize(struct intr_frame * f) {
   int * p =f->esp;
   check_func_args((void *)(p + 1), 1);
-  struct file_node * open_f = find_file(&thread_current()->files, *(p + 1));
+  struct file_node * open_f = find_file(&thread_current()->fds, *(p + 1));
   // check whether the write file is valid
   if (open_f){
     acquire_file_lock();
@@ -210,10 +210,10 @@ void sys_read(struct intr_frame * f) {
     f->eax = size;
   }
   else{
-    struct file_node * open_f = find_file(&thread_current()->files, *(p + 1));
+    struct file_node * open_f = find_file(&thread_current()->fds, *(p + 1));
     // check whether the read file is valid
     if (open_f){
-       if(!is_really_file(open_f->file)){
+       if(!file_validate(open_f->file)){
          f->eax = -1;
          return;
        }
@@ -238,11 +238,11 @@ void sys_write(struct intr_frame * f) {
     f->eax = size2;
   }
   else{
-    struct file_node * openf = find_file(&thread_current()->files, *(p + 1));
+    struct file_node * openf = find_file(&thread_current()->fds, *(p + 1));
     // check whether the write file is valid
     if (openf){
       acquire_file_lock();
-      bool is_file = is_really_file(openf->file);
+      bool is_file = file_validate(openf->file);
       if(!is_file){
         f->eax = -1;
         return;
@@ -257,7 +257,7 @@ void sys_write(struct intr_frame * f) {
 void sys_seek(struct intr_frame * f) {
   int * p =f->esp;
   check_func_args((void *)(p + 1), 2);
-  struct file_node * openf = find_file(&thread_current()->files, *(p + 1));
+  struct file_node * openf = find_file(&thread_current()->fds, *(p + 1));
   if (openf){
     acquire_file_lock();
     file_seek(openf->file, *(p + 2));
@@ -268,7 +268,7 @@ void sys_seek(struct intr_frame * f) {
 void sys_tell(struct intr_frame * f) {
   int * p =f->esp;
   check_func_args((void *)(p + 1), 1);
-  struct file_node * open_f = find_file(&thread_current()->files, *(p + 1));
+  struct file_node * open_f = find_file(&thread_current()->fds, *(p + 1));
   // check whether the tell file is valid
   if (open_f){
     acquire_file_lock();
@@ -281,7 +281,7 @@ void sys_tell(struct intr_frame * f) {
 void sys_close(struct intr_frame * f) {
   int *p = f->esp;
   check_func_args((void *)(p + 1), 1);
-  struct file_node * openf = find_file(&thread_current()->files, *(p + 1));
+  struct file_node * openf = find_file(&thread_current()->fds, *(p + 1));
   if (openf){
     acquire_file_lock();
     file_close(openf->file);
@@ -320,11 +320,11 @@ void sys_READDIR(struct intr_frame *f){
   int fd = *(p + 1);
   const char * dir_name = (const char *)*(p + 2);
 
-  struct file_node * openf = find_file(&thread_current()->files, fd);
+  struct file_node * openf = find_file(&thread_current()->fds, fd);
   bool ok;
   if(openf!=NULL){
     openf->read_dir_cnt ++;
-    ok = read_dir_by_file_node(openf->file, dir_name, openf->read_dir_cnt);
+    ok = file_get_dir(openf->file, dir_name, openf->read_dir_cnt);
   }
   f->eax = ok;
   // if (ok)
@@ -337,10 +337,10 @@ void sys_ISDIR(struct intr_frame *f){
   /* Tests if a fd represents a directory. */
   int * p =f->esp;
   int fd = *(p + 1);
-  struct file_node * openf = find_file(&thread_current()->files, fd);
+  struct file_node * openf = find_file(&thread_current()->fds, fd);
   // check whether the write file is valid
   if (openf){
-    f->eax = !is_really_file(openf->file);
+    f->eax = !file_validate(openf->file);
   }else{
     f->eax = false;
   }
@@ -351,13 +351,13 @@ void sys_INUMBER(struct intr_frame *f){
   /* Returns the inode number for a fd. */
   int * p =f->esp;
   int fd = *(p + 1);
-  struct file_node * openf = find_file(&thread_current()->files, fd);
+  struct file_node * openf = find_file(&thread_current()->fds, fd);
   // check whether the write file is valid
   if (openf){
-    f->eax = get_inumber(openf->file);
+    f->eax = file_get_inumber(openf->file);
   }
 }
 
 void sys_CACHE_FLUSH(struct intr_frame *f) {
-  f->eax = test_cache();
+  f->eax = cache_examine();
 }
