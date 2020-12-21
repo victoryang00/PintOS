@@ -241,6 +241,8 @@ filesys_open (const char *name)
 
       if (parse_file_path (name, &dir, base_name)) 
         {
+  // printf("%s\n\n\n",name);
+          
           struct inode *inode;
           dir_lookup (dir, base_name, &inode);
           dir_close (dir);

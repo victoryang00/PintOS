@@ -189,9 +189,10 @@ process_wait (tid_t child_tid)
     }
   }
   /* if pid is not in its children list, return immediately. */
-  if (e == list_end(&l) ){
+  if (e == list_end(&l)||!(e != NULL && e->prev != NULL && e->next != NULL) ){
       return -1;
   }
+
   list_remove(e);
   free(child);
   

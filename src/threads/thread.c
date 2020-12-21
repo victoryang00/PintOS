@@ -283,7 +283,7 @@ thread_name (void)
 void
 thread_wait(struct thread *t,int child_tid)
 {
-    for (struct list_elem *e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e))
+  for (struct list_elem *e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e))
   {
     t = list_entry (e, struct thread, allelem);
     if(t->tid==child_tid){
