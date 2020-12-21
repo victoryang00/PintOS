@@ -16,13 +16,13 @@ struct inode_disk
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
      
-    block_sector_t pointers[(DIRECT_POINTER_NUM + SINGLE_POINTER_NUM + DOUBLE_POINTER_NUM)];
+    block_sector_t pointers[102];
     uint32_t level0_ptr_index;                  /* index of the pointer list */
     uint32_t level1_ptr_index;               /* index of the level 1 pointer table */
     uint32_t level2_ptr_index;               /* index of the level 2 pointer table */
 
     uint32_t is_file;                    /* 1 for file, 0 for dir */
-    uint32_t not_used[122 - (DIRECT_POINTER_NUM + SINGLE_POINTER_NUM + DOUBLE_POINTER_NUM)];
+    uint32_t not_used[20];
   };
 
 
