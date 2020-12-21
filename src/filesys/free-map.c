@@ -4,9 +4,11 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
+#include "threads/synch.h"
 
 static struct file *free_map_file;   /* Free map file. */
 static struct bitmap *free_map;      /* Free map, one bit per sector. */
+static struct lock free_map_lock;    /* The lock to check whether the lock is mapped. */
 
 /* Initializes the free map. */
 void
@@ -49,6 +51,12 @@ free_map_release (block_sector_t sector, size_t cnt)
   bitmap_write (free_map, free_map_file);
 }
 
+/* The map whether is released. */
+void free_map_release_at_sector(block_sector_t sector){
+  lock_acquire(&free_map_lock);
+  bitmap_reset(free_map,sector);
+  lock_release(&free_map_lock);
+}
 /* Opens the free map file and reads it from disk. */
 void
 free_map_open (void) 
@@ -73,7 +81,7 @@ void
 free_map_create (void) 
 {
   /* Create inode. */
-  if (!inode_create (FREE_MAP_SECTOR, bitmap_file_size (free_map)))
+  if (!inode_create (FREE_MAP_SECTOR, bitmap_file_size (free_map)),1)
     PANIC ("free map creation failed");
 
   /* Write bitmap to file. */

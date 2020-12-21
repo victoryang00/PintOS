@@ -146,6 +146,13 @@ struct thread
         int exit_code;                  /* Child exit code, if dead. */
         struct semaphore dead;          /* 1=child alive, 0=child dead. */
     };
+
+    /* The dir thread hold. */
+    struct dir* curr_dir;
+
+    struct list files;// the list of opened files
+    struct file *executable; // the thread executable file
+
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 

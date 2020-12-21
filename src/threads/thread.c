@@ -4,7 +4,6 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
-#include <hash.h>
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -13,7 +12,11 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "filesys/file.h"
+#include "userprog/syscall.h"
+#ifdef VM
+#include <hash.h>
 #include "vm/frame.h"
+#endif
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -47,6 +50,9 @@ static struct thread *initial_thread;
 
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
+
+/* The global lock for file manipulation. */
+static struct lock file_lock;
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
@@ -101,6 +107,7 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
+  lock_init (&file_lock);
   list_init (&ready_list);
   list_init (&all_list);
   list_init (&sleep_list);
@@ -307,6 +314,17 @@ thread_exit (void)
 #ifdef USERPROG
   process_exit ();
 #endif
+
+  // close the executable file
+  file_close(thread_current()->executable);
+  // close all file that opened in the thread_current()
+  // file list
+  struct list *files = &thread_current()->files;
+  while (!list_empty(files)) {
+      struct file_node *f = list_entry(list_pop_front(files), struct file_node, file_elem);
+      file_close(f->file);
+      free(f);
+  }
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
