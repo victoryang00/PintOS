@@ -43,7 +43,7 @@ process_execute (const char *file_name)
   memcpy(fn_copy, file_name, len + 1);
   memcpy(fn_copy2, fn_copy, len + 1);
   /* Create a new thread to execute FILE_NAME. */
-  // token out the argument
+  /* token out the argument */
   char *token, *save_ptr;
   token = strtok_r(fn_copy2, " ", &save_ptr);
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
@@ -52,7 +52,7 @@ process_execute (const char *file_name)
     free (fn_copy);
     return tid;
   }
-  // the parent thread block for thread loading
+  /* the parent thread block for thread loading */
   sema_down(&thread_current()->esem);
   if (!thread_current()->load_status) return TID_ERROR;
   return tid;
@@ -75,20 +75,20 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  // token out the argument
+  /* token out the argument */
   char *token, *save_ptr;
   token = strtok_r (file_name, " ", &save_ptr);
   success = load (token, &if_.eip, &if_.esp);
-  // put the argument in the stack as the decreasing address order
+  /* put the argument in the stack as the decreasing address order */
   int argc = 0;
   int argv[128];
   
   struct thread *cur = thread_current();
   
-  // lock the elffile file that belongs to thread_current()
+  /* lock the elffile file that belongs to thread_current() */
   acquire_file_lock();
   cur->elffile = filesys_open(token);
-  // once elffile file is opened, deny other writing requests
+  /* once elffile file is opened, deny other writing requests */
   if(cur->elffile != NULL) file_deny_write(cur->elffile);
   release_file_lock();
 
@@ -98,19 +98,19 @@ start_process (void *file_name_)
     sema_up(&thread_current()->parent->esem);
     thread_exit();
   }
-  // token out the arguments
+  /* token out the arguments */
   for(token = strtok_r(fn_copy, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
     if_.esp -= (strlen(token) + 1);
     memcpy(if_.esp, token, strlen(token) + 1);
     argv[argc++] = (int)if_.esp;
   }
-  // memory alignment
+  /* memory alignment */
   while((int)if_.esp % 4) if_.esp--;
 
   int zero = 0;
   if_.esp -= 4;
   memcpy(if_.esp,&zero, sizeof(int));
-  // argument addresses
+  /* argument addresses */
   for(int i = argc - 1; i >= 0; i--){
     if_.esp -= 4;
     memcpy(if_.esp, &argv[i], sizeof(int));
@@ -123,7 +123,7 @@ start_process (void *file_name_)
   memcpy(if_.esp, &argc, sizeof(int));
   if_.esp -= 4;
   memcpy(if_.esp, &zero, sizeof(int));
-  // up the semaphore
+  /* up the semaphore */
   sema_up(&thread_current()->parent->esem);
 
   /* Start the user process by simulating a return from an
@@ -189,7 +189,7 @@ process_wait (tid_t child_tid)
     }
   }
   /* if pid is not in its children list, return immediately. */
-  if (e == list_end(&t->child_list)) {
+  if (e == list_end(&l) ){
       return -1;
   }
   list_remove(e);
@@ -420,6 +420,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Open executable file. */
   acquire_file_lock();
   file = filesys_open (file_name);
+  // printf("%s\n\n\n",file);
   if (file == NULL)
     {
       printf ("load: %s: open failed\n", file_name);
